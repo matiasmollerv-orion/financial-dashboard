@@ -1,14 +1,31 @@
 # ============================================================
-# CARGA HISTÓRICA SANTANDER → SUPABASE
-# Descarga PDFs de Gmail y sube gastos + cuenta corriente
+# CARGA SANTANDER → SUPABASE
+# Uso: python load_santander.py          → histórico completo
+#      python load_santander.py --days 14 → solo últimos 14 días
 # ============================================================
 
-import sys, warnings, math
+import sys, warnings, math, argparse
 sys.path.insert(0, ".")
 warnings.filterwarnings("ignore")
 
 from pathlib import Path
+from datetime import datetime, timedelta
 import pandas as pd
+
+# ── Argumentos ────────────────────────────────────────────
+parser = argparse.ArgumentParser()
+parser.add_argument("--days", type=int, default=None,
+                    help="Solo buscar correos de los últimos N días (omitir = histórico completo)")
+args, _ = parser.parse_known_args()
+
+# Filtro de fecha para Gmail
+if args.days:
+    since = (datetime.now() - timedelta(days=args.days)).strftime("%Y/%m/%d")
+    DATE_FILTER = f" after:{since}"
+    print(f"📅 Modo incremental: correos desde {since} ({args.days} días)")
+else:
+    DATE_FILTER = ""
+    print("📅 Modo histórico: todos los correos")
 
 from extractors.gmail_client import (
     get_gmail_service, search_emails,
@@ -42,13 +59,13 @@ print("PASO 1: Descarga de PDFs")
 print("=" * 60)
 
 queries = {
-    "Tarjeta de Crédito": "from:mensajeria@santander.cl subject:Estado de Cuenta Tarjeta de Crédito",
-    "Cuenta Corriente":   "from:mensajeria@santander.cl subject:Cartola Mensual de Cuentas",
+    "Tarjeta de Crédito": f"from:mensajeria@santander.cl subject:Estado de Cuenta Tarjeta de Crédito{DATE_FILTER}",
+    "Cuenta Corriente":   f"from:mensajeria@santander.cl subject:Cartola Mensual de Cuentas{DATE_FILTER}",
 }
 
 for label, query in queries.items():
     print(f"\n🔍 {label}")
-    messages = search_emails(service, query, max_results=9999)
+    messages = search_emails(service, query, max_results=9999 if not args.days else 10)
     print(f"   {len(messages)} correos encontrados")
     n_pdfs = 0
     for m in messages:

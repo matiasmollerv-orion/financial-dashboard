@@ -1,10 +1,21 @@
 # ============================================================
 # CARGA VENTAS RACIONAL → SUPABASE
-# Parsea correos "Vendiste X (TICKER)" de racional
+# Uso: python load_racional_ventas.py           → histórico
+#      python load_racional_ventas.py --days 14 → últimos 14 días
 # ============================================================
 
-import sys, re, base64
+import sys, re, base64, argparse
 sys.path.insert(0, ".")
+
+parser = argparse.ArgumentParser()
+parser.add_argument("--days", type=int, default=None)
+args, _ = parser.parse_known_args()
+
+from datetime import datetime, timedelta
+DATE_FILTER = ""
+if args.days:
+    since = (datetime.now() - timedelta(days=args.days)).strftime("%Y/%m/%d")
+    DATE_FILTER = f" after:{since}"
 
 from extractors.gmail_client import (
     get_gmail_service, search_emails,
@@ -99,7 +110,8 @@ def parse_venta_email(subject, body):
 
 
 # ── Buscar todos los correos ──────────────────────────────
-msgs = search_emails(service, "from:racional subject:vendiste", max_results=500)
+msgs = search_emails(service, f"from:racional subject:vendiste{DATE_FILTER}",
+                    max_results=500 if not args.days else 10)
 print(f"\n📧 {len(msgs)} correos 'Vendiste' encontrados")
 
 # ── Ver ventas ya cargadas para no duplicar ───────────────
