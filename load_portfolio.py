@@ -1,0 +1,170 @@
+# ============================================================
+# CARGA PORTAFOLIO ACTUAL + SUELDO A SUPABASE
+# Datos al 30/04/2026 desde PDFs Racional
+# ============================================================
+
+import sys
+sys.path.insert(0, ".")
+from database.supabase_client import get_client
+
+sb = get_client()
+
+# ── LIMPIAR tablas antes de cargar (evitar duplicados en recarga)
+sb.table("cartera_actual").delete().neq("id", 0).execute()
+sb.table("ingresos").delete().neq("id", 0).execute()
+print("🗑️  Tablas limpiadas")
+
+# ── 1. PORTAFOLIO ACCIONES CHILENAS (al 30/04/2026)
+print("\n📊 Cargando portafolio acciones chilenas...")
+acciones_cl = [
+    {"ticker": "BCI",       "empresa": "Banco de Crédito e Inversiones", "mercado": "nacional", "cantidad": 30.0,     "precio_compra": 23930.43, "precio_actual": 60800.00, "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "LTM",       "empresa": "LATAM Airlines Group",           "mercado": "nacional", "cantidad": 83901.0,  "precio_compra": 19.01,    "precio_actual": 21.40,    "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "CENCOSUD",  "empresa": "Cencosud",                       "mercado": "nacional", "cantidad": 649.0,    "precio_compra": 1970.25,  "precio_actual": 2275.00,  "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "PARAUCO",   "empresa": "Parque Arauco",                  "mercado": "nacional", "cantidad": 341.0,    "precio_compra": 2977.37,  "precio_actual": 4020.00,  "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "COPEC",     "empresa": "Empresas Copec",                 "mercado": "nacional", "cantidad": 170.0,    "precio_compra": 6536.42,  "precio_actual": 6303.00,  "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "CMPC",      "empresa": "CMPC",                           "mercado": "nacional", "cantidad": 771.0,    "precio_compra": 1397.92,  "precio_actual": 1116.10,  "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "BSANTANDER","empresa": "Banco Santander Chile",          "mercado": "nacional", "cantidad": 8916.0,   "precio_compra": 63.16,    "precio_actual": 71.95,    "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "CHILE",     "empresa": "Banco de Chile",                 "mercado": "nacional", "cantidad": 3396.0,   "precio_compra": 163.59,   "precio_actual": 168.68,   "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "COLBUN",    "empresa": "Colbún",                         "mercado": "nacional", "cantidad": 4159.0,   "precio_compra": 147.63,   "precio_actual": 134.00,   "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "IAM",       "empresa": "Inversiones Aguas Metropolitanas","mercado": "nacional","cantidad": 246.0,    "precio_compra": 941.36,   "precio_actual": 980.00,   "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ENELAM",    "empresa": "Enel Américas",                  "mercado": "nacional", "cantidad": 1810.0,   "precio_compra": 87.04,    "precio_actual": 84.00,    "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "QUINENCO",  "empresa": "Quinenco",                       "mercado": "nacional", "cantidad": 25.0,     "precio_compra": 3366.15,  "precio_actual": 4400.00,  "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "CAP",       "empresa": "CAP",                            "mercado": "nacional", "cantidad": 9.0,      "precio_compra": 6631.88,  "precio_actual": 7015.00,  "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "SMU",       "empresa": "SMU",                            "mercado": "nacional", "cantidad": 228.0,    "precio_compra": 160.85,   "precio_actual": 136.64,   "moneda": "CLP", "fecha_actualizacion": "2026-04-30"},
+]
+res = sb.table("cartera_actual").insert(acciones_cl).execute()
+print(f"  ✅ {len(res.data)} acciones chilenas cargadas")
+
+# ── 2. PORTAFOLIO STOCKS INTERNACIONALES (al 30/04/2026)
+print("\n📊 Cargando portafolio stocks internacionales...")
+stocks_intl = [
+    {"ticker": "ABNB",  "empresa": "Airbnb",                    "mercado": "internacional", "cantidad": 0.0903204,   "precio_compra": 120.57,  "precio_actual": 140.36,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "AMD",   "empresa": "Advanced Micro Devices",    "mercado": "internacional", "cantidad": 2.64766673,  "precio_compra": 202.54,  "precio_actual": 354.49,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "AMZN",  "empresa": "Amazon",                    "mercado": "internacional", "cantidad": 6.59532723,  "precio_compra": 220.78,  "precio_actual": 265.06,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ANET",  "empresa": "Arista Networks",           "mercado": "internacional", "cantidad": 0.95919944,  "precio_compra": 141.73,  "precio_actual": 172.71,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "APO",   "empresa": "Apollo Global Management",  "mercado": "internacional", "cantidad": 2.66412468,  "precio_compra": 112.61,  "precio_actual": 128.72,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ARTY",  "empresa": "iShares Future AI & Tech",  "mercado": "internacional", "cantidad": 7.40141753,  "precio_compra": 0.00,    "precio_actual": 61.94,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ASML",  "empresa": "ASML Holding",              "mercado": "internacional", "cantidad": 0.23897301,  "precio_compra": 794.99,  "precio_actual": 1438.99,  "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ASTS",  "empresa": "AST SpaceMobile",           "mercado": "internacional", "cantidad": 8.20927508,  "precio_compra": 96.24,   "precio_actual": 73.90,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "AVAV",  "empresa": "AeroVironment",             "mercado": "internacional", "cantidad": 0.83414211,  "precio_compra": 281.35,  "precio_actual": 195.02,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "AVGO",  "empresa": "Broadcom",                  "mercado": "internacional", "cantidad": 0.29315041,  "precio_compra": 351.59,  "precio_actual": 417.43,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "BE",    "empresa": "Bloom Energy",              "mercado": "internacional", "cantidad": 4.28061226,  "precio_compra": 186.89,  "precio_actual": 283.36,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "BITO",  "empresa": "ProShares Bitcoin ETF",     "mercado": "internacional", "cantidad": 3.51370344,  "precio_compra": 0.00,    "precio_actual": 10.47,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "BJ",    "empresa": "BJ's Wholesale Club",       "mercado": "internacional", "cantidad": 2.04081632,  "precio_compra": 98.00,   "precio_actual": 93.89,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "BND",   "empresa": "Vanguard Total Bond Market","mercado": "internacional", "cantidad": 35.98412489, "precio_compra": 73.26,   "precio_actual": 73.50,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "BNDX",  "empresa": "Vanguard Total Intl Bond",  "mercado": "internacional", "cantidad": 27.19200564, "precio_compra": 49.26,   "precio_actual": 48.05,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "CCJ",   "empresa": "Cameco Corp",               "mercado": "internacional", "cantidad": 6.45594737,  "precio_compra": 100.37,  "precio_actual": 123.04,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "CEG",   "empresa": "Constellation Energy",      "mercado": "internacional", "cantidad": 0.42719485,  "precio_compra": 340.76,  "precio_actual": 313.00,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "CPER",  "empresa": "US Commodity Index Copper", "mercado": "internacional", "cantidad": 21.58332203, "precio_compra": 28.34,   "precio_actual": 36.53,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "CRWD",  "empresa": "CrowdStrike",               "mercado": "internacional", "cantidad": 0.52160284,  "precio_compra": 384.99,  "precio_actual": 445.75,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "EEM",   "empresa": "iShares MSCI Emg Mkt ETF",  "mercado": "internacional", "cantidad": 8.73965691,  "precio_compra": 39.64,   "precio_actual": 63.99,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ESGV",  "empresa": "Vanguard ESG US Stock ETF", "mercado": "internacional", "cantidad": 9.2276047,   "precio_compra": 79.60,   "precio_actual": 125.77,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "EWJ",   "empresa": "iShares MSCI Japan ETF",    "mercado": "internacional", "cantidad": 12.21940612, "precio_compra": 26.47,   "precio_actual": 89.10,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "EWZ",   "empresa": "iShares MSCI Brazil ETF",   "mercado": "internacional", "cantidad": 0.69127785,  "precio_compra": 31.83,   "precio_actual": 39.70,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "EZU",   "empresa": "iShares MSCI Eurozone ETF", "mercado": "internacional", "cantidad": 7.88711131,  "precio_compra": 0.00,    "precio_actual": 66.62,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "FIG",   "empresa": "Figma",                     "mercado": "internacional", "cantidad": 79.00836846, "precio_compra": 58.00,   "precio_actual": 17.70,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "FTEC",  "empresa": "Fidelity MSCI Info Tech",   "mercado": "internacional", "cantidad": 1.76586699,  "precio_compra": 131.72,  "precio_actual": 246.31,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "GLDM",  "empresa": "SPDR Gold MiniShares",      "mercado": "internacional", "cantidad": 8.56828609,  "precio_compra": 79.17,   "precio_actual": 91.37,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "GOOGL", "empresa": "Alphabet",                  "mercado": "internacional", "cantidad": 11.2614176,  "precio_compra": 153.75,  "precio_actual": 384.80,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "IEF",   "empresa": "iShares 7-10yr Treasury",   "mercado": "internacional", "cantidad": 17.00471801, "precio_compra": 94.68,   "precio_actual": 94.98,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "IGF",   "empresa": "iShares Global Infra ETF",  "mercado": "internacional", "cantidad": 1.3777492,   "precio_compra": 60.97,   "precio_actual": 68.53,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "IJR",   "empresa": "iShares Core S&P Small Cap","mercado": "internacional", "cantidad": 1.89089533,  "precio_compra": 105.77,  "precio_actual": 137.10,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ILF",   "empresa": "iShares Latin America 40",  "mercado": "internacional", "cantidad": 17.44405997, "precio_compra": 26.01,   "precio_actual": 36.44,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "INDA",  "empresa": "iShares MSCI India ETF",    "mercado": "internacional", "cantidad": 35.59990944, "precio_compra": 49.73,   "precio_actual": 49.42,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "IONQ",  "empresa": "IonQ",                      "mercado": "internacional", "cantidad": 7.42724922,  "precio_compra": 57.89,   "precio_actual": 45.12,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "IQLT",  "empresa": "iShares MSCI Intl Quality", "mercado": "internacional", "cantidad": 23.38699869, "precio_compra": 42.76,   "precio_actual": 48.85,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ITUB",  "empresa": "Itaú Unibanco",             "mercado": "internacional", "cantidad": 59.55167656, "precio_compra": 5.35,    "precio_actual": 8.70,     "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "KKR",   "empresa": "KKR & Co",                  "mercado": "internacional", "cantidad": 4.26803546,  "precio_compra": 93.72,   "precio_actual": 104.34,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "LIT",   "empresa": "Global X Lithium Battery",  "mercado": "internacional", "cantidad": 6.99028483,  "precio_compra": 0.00,    "precio_actual": 88.24,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "LLY",   "empresa": "Eli Lilly",                 "mercado": "internacional", "cantidad": 2.88985476,  "precio_compra": 763.88,  "precio_actual": 934.60,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "MELI",  "empresa": "MercadoLibre",              "mercado": "internacional", "cantidad": 1.18978797,  "precio_compra": 1897.29, "precio_actual": 1792.63,  "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "META",  "empresa": "Meta Platforms",            "mercado": "internacional", "cantidad": 1.50828212,  "precio_compra": 459.72,  "precio_actual": 611.91,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "MSFT",  "empresa": "Microsoft",                 "mercado": "internacional", "cantidad": 0.11658847,  "precio_compra": 411.70,  "precio_actual": 407.78,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "MU",    "empresa": "Micron Technology",         "mercado": "internacional", "cantidad": 0.26881358,  "precio_compra": 318.77,  "precio_actual": 517.16,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "NU",    "empresa": "Nu Holdings",               "mercado": "internacional", "cantidad": 337.26659577,"precio_compra": 13.03,   "precio_actual": 14.48,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "NVDA",  "empresa": "Nvidia",                    "mercado": "internacional", "cantidad": 1.90135958,  "precio_compra": 210.42,  "precio_actual": 199.57,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "NVO",   "empresa": "Novo Nordisk",              "mercado": "internacional", "cantidad": 7.84447246,  "precio_compra": 31.87,   "precio_actual": 42.22,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ONDS",  "empresa": "Ondas Holdings",            "mercado": "internacional", "cantidad": 47.44368323, "precio_compra": 10.17,   "precio_actual": 10.04,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "PANW",  "empresa": "Palo Alto Networks",        "mercado": "internacional", "cantidad": 0.28645233,  "precio_compra": 167.57,  "precio_actual": 179.32,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "PICK",  "empresa": "iShares MSCI Global Metals","mercado": "internacional", "cantidad": 1.05701068,  "precio_compra": 29.40,   "precio_actual": 61.60,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "PURR",  "empresa": "Hyperliquid Strategies",    "mercado": "internacional", "cantidad": 33.27364077, "precio_compra": 6.01,    "precio_actual": 6.02,     "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "PWR",   "empresa": "Quanta Services",           "mercado": "internacional", "cantidad": 0.16480832,  "precio_compra": 486.14,  "precio_actual": 727.77,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "QQQ",   "empresa": "Invesco QQQ Trust",         "mercado": "internacional", "cantidad": 0.68616911,  "precio_compra": 0.00,    "precio_actual": 667.74,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "QUAL",  "empresa": "iShares MSCI USA Quality",  "mercado": "internacional", "cantidad": 0.43745271,  "precio_compra": 192.02,  "precio_actual": 207.25,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "QUBT",  "empresa": "Quantum Computing",         "mercado": "internacional", "cantidad": 24.96716907, "precio_compra": 16.02,   "precio_actual": 9.02,     "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "REMX",  "empresa": "VanEck Rare Earth ETF",     "mercado": "internacional", "cantidad": 0.27472214,  "precio_compra": 70.18,   "precio_actual": 105.43,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "RGTI",  "empresa": "Rigetti Computing",         "mercado": "internacional", "cantidad": 10.05002628, "precio_compra": 39.80,   "precio_actual": 17.45,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "RSP",   "empresa": "Invesco S&P500 Equal Wght", "mercado": "internacional", "cantidad": 1.92360591,  "precio_compra": 197.60,  "precio_actual": 203.44,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "SCHH",  "empresa": "Schwab US REIT ETF",        "mercado": "internacional", "cantidad": 47.74179114, "precio_compra": 19.80,   "precio_actual": 23.42,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "SCHP",  "empresa": "Schwab US TIPS ETF",        "mercado": "internacional", "cantidad": 4.2700759,   "precio_compra": 25.03,   "precio_actual": 26.87,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "SGML",  "empresa": "Sigma Lithium",             "mercado": "internacional", "cantidad": 40.48627436, "precio_compra": 0.00,    "precio_actual": 22.07,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "SOFI",  "empresa": "SoFi Technologies",         "mercado": "internacional", "cantidad": 3.70526815,  "precio_compra": 26.99,   "precio_actual": 16.10,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "SQM",   "empresa": "Sociedad Química y Minera", "mercado": "internacional", "cantidad": 113.44991868,"precio_compra": 41.69,   "precio_actual": 92.17,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "TMF",   "empresa": "Direxion 20yr Treasury 3x", "mercado": "internacional", "cantidad": 5.75171447,  "precio_compra": 56.52,   "precio_actual": 34.82,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "TSLA",  "empresa": "Tesla",                     "mercado": "internacional", "cantidad": 1.883617,    "precio_compra": 425.13,  "precio_actual": 381.63,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "TSM",   "empresa": "Taiwan Semiconductor",      "mercado": "internacional", "cantidad": 2.11848957,  "precio_compra": 163.48,  "precio_actual": 396.06,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "UNH",   "empresa": "UnitedHealth Group",        "mercado": "internacional", "cantidad": 8.62844164,  "precio_compra": 297.44,  "precio_actual": 370.48,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VBR",   "empresa": "Vanguard Small Cap Value",  "mercado": "internacional", "cantidad": 1.14157727,  "precio_compra": 226.00,  "precio_actual": 232.42,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VCX",   "empresa": "Fundrise Innovation Fund",  "mercado": "internacional", "cantidad": 6.604419,    "precio_compra": 105.99,  "precio_actual": 94.79,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VEU",   "empresa": "Vanguard All World ex-US",  "mercado": "internacional", "cantidad": 4.67833398,  "precio_compra": 51.14,   "precio_actual": 80.92,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VGSH",  "empresa": "Vanguard Short Term Treas", "mercado": "internacional", "cantidad": 11.17702752, "precio_compra": 58.87,   "precio_actual": 58.47,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VNM",   "empresa": "VanEck Vietnam ETF",        "mercado": "internacional", "cantidad": 3.1949426,   "precio_compra": 13.77,   "precio_actual": 18.84,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VOO",   "empresa": "Vanguard S&P 500 ETF",      "mercado": "internacional", "cantidad": 8.85660244,  "precio_compra": 471.80,  "precio_actual": 660.58,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VRT",   "empresa": "Vertiv Holdings",           "mercado": "internacional", "cantidad": 0.51220511,  "precio_compra": 212.61,  "precio_actual": 328.49,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VT",    "empresa": "Vanguard Total World Stock","mercado": "internacional", "cantidad": 34.14496874, "precio_compra": 132.00,  "precio_actual": 151.20,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VTI",   "empresa": "Vanguard Total Stock Market","mercado": "internacional","cantidad": 8.20658408,  "precio_compra": 263.82,  "precio_actual": 354.18,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VTIP",  "empresa": "Vanguard Short-Term Inflation","mercado": "internacional","cantidad": 7.42391843,"precio_compra": 50.11,   "precio_actual": 50.36,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VTV",   "empresa": "Vanguard Value ETF",        "mercado": "internacional", "cantidad": 12.34565141, "precio_compra": 181.40,  "precio_actual": 206.78,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VWO",   "empresa": "Vanguard FTSE Emg Mkts ETF","mercado": "internacional", "cantidad": 12.44705584, "precio_compra": 52.78,   "precio_actual": 58.93,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "VXUS",  "empresa": "Vanguard Total Intl Stock", "mercado": "internacional", "cantidad": 45.78495025, "precio_compra": 64.53,   "precio_actual": 83.06,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "WMT",   "empresa": "Walmart",                   "mercado": "internacional", "cantidad": 6.5466854,   "precio_compra": 106.97,  "precio_actual": 131.93,   "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+    {"ticker": "ZETA",  "empresa": "Zeta Global Holdings",      "mercado": "internacional", "cantidad": 4.12832484,  "precio_compra": 24.22,   "precio_actual": 18.42,    "moneda": "USD", "fecha_actualizacion": "2026-04-30"},
+]
+res = sb.table("cartera_actual").insert(stocks_intl).execute()
+print(f"  ✅ {len(res.data)} stocks internacionales cargados")
+
+# ── 3. SUELDO (ingresos mensuales)
+print("\n💰 Registrando ingresos...")
+# Registramos el sueldo de abril y proyectamos los últimos 12 meses como base
+from datetime import date, timedelta
+import calendar
+
+sueldo_neto = 4862792
+meses = []
+for i in range(12):
+    # Calcular último día de cada mes
+    d = date(2026, 4, 1) - timedelta(days=30 * i)
+    ultimo_dia = calendar.monthrange(d.year, d.month)[1]
+    fecha = date(d.year, d.month, ultimo_dia).isoformat()
+    meses.append({
+        "fecha": fecha,
+        "concepto": "Sueldo líquido",
+        "monto": sueldo_neto,
+        "moneda": "CLP",
+        "fuente": "manual"
+    })
+
+res = sb.table("ingresos").insert(meses).execute()
+print(f"  ✅ {len(res.data)} meses de sueldo registrados (${sueldo_neto:,.0f} CLP/mes)")
+
+# ── RESUMEN
+print("\n" + "="*55)
+print("✅ PORTAFOLIO CARGADO COMPLETAMENTE")
+print("="*55)
+res_cl = sb.table("cartera_actual").select("id", count="exact").eq("mercado", "nacional").execute()
+res_intl = sb.table("cartera_actual").select("id", count="exact").eq("mercado", "internacional").execute()
+res_ing = sb.table("ingresos").select("id", count="exact").execute()
+print(f"  Acciones chilenas    : {res_cl.count} posiciones")
+print(f"  Stocks internacionales: {res_intl.count} posiciones")
+print(f"  Ingresos registrados : {res_ing.count} meses")
+
+# Valor total portafolio
+usd_clp = 901.76  # tipo de cambio al 30/04/2026 (del estado de cuenta)
+valor_cl_clp = 25_881_566
+valor_intl_usd = 86_413.09
+valor_intl_clp = valor_intl_usd * usd_clp
+total_clp = valor_cl_clp + valor_intl_clp
+print(f"\n  Portafolio CL        : ${valor_cl_clp:>15,.0f} CLP")
+print(f"  Portafolio Intl      : ${valor_intl_clp:>15,.0f} CLP (USD {valor_intl_usd:,.2f} × {usd_clp})")
+print(f"  PATRIMONIO TOTAL     : ${total_clp:>15,.0f} CLP")
+print(f"  Sueldo mensual neto  : ${sueldo_neto:>15,.0f} CLP")

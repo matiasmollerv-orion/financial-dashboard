@@ -1,0 +1,32 @@
+# ============================================================
+# FINANCIAL DASHBOARD - Dependencias Python
+# Instalar con: pip install -r requirements.txt
+# ============================================================
+
+# Gmail API
+google-auth>=2.29.0
+google-auth-oauthlib>=1.2.0
+google-auth-httplib2>=0.2.0
+google-api-python-client>=2.127.0
+
+# PDF parsing
+pdfplumber>=0.11.0
+pikepdf>=8.15.1            # PDFs con contraseña
+
+# Data processing
+pandas>=2.2.0
+numpy>=1.26.0
+numpy-financial==1.0.0     # TIR, VAN, proyecciones
+beautifulsoup4>=4.12.0
+
+# Base de datos
+supabase>=2.4.6
+
+# Dashboard
+streamlit>=1.35.0
+plotly>=5.22.0             # gráficos interactivos
+
+# Utilidades
+python-dotenv>=1.0.1       # leer .env
+pyyaml>=6.0.1              # leer email_sources.yaml
+requests>=2.32.0

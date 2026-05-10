@@ -1,0 +1,104 @@
+# ============================================================
+# FUENTES DE CORREO - Configuración de extracción
+# ============================================================
+#
+# REGLA ANTI-DUPLICACIÓN:
+#   Cada transacción se registra desde UNA sola fuente.
+#   Los correos de validación mensual (Vector Capital) se usan
+#   solo para reconciliar posiciones, no para registrar nuevas operaciones.
+#
+# FLUJO:
+#   1. Transacción ocurre → correo inmediato → se registra en DB
+#   2. Fin de mes → PDF Vector Capital → se valida contra lo registrado
+# ============================================================
+
+sources:
+
+  # ── SANTANDER ────────────────────────────────────────────
+
+  santander_tarjeta_credito:
+    remitente: mensajeria@santander.cl
+    asunto: "Estado de Cuenta Tarjeta de Crédito"
+    tipo: pdf_adjunto
+    pdfs_esperados: 2                           # uno CLP, uno USD
+    requiere_clave: true
+    clave_env: SANTANDER_PDF_PASSWORD
+    categoria: gastos
+    frecuencia: mensual
+    gmail_query: "from:mensajeria@santander.cl subject:Estado de Cuenta Tarjeta de Crédito"
+
+  santander_cuenta_corriente:
+    remitente: mensajeria@santander.cl
+    asunto: "Cartola Mensual de Cuentas"
+    tipo: pdf_adjunto
+    pdfs_esperados: 1
+    requiere_clave: true
+    clave_env: SANTANDER_PDF_PASSWORD
+    categoria: movimientos
+    frecuencia: mensual
+    gmail_query: "from:mensajeria@santander.cl subject:Cartola Mensual de Cuentas"
+
+  # ── RACIONAL - TRANSACCIONES (fuentes primarias) ─────────
+
+  racional_transacciones_internacionales:
+    remitente: racional@racional.cl
+    asunto: "Transacciones Racional Stocks"     # + fecha. Ej: "Transacciones Racional Stocks 06-05-2026"
+    asunto_parcial: true
+    tipo: cuerpo_email                          # detalle viene en el cuerpo
+    categoria: inversiones_internacionales
+    frecuencia: on_demand                       # llega cada vez que hay actividad
+    gmail_query: "from:racional@racional.cl subject:Transacciones Racional Stocks"
+    nota: >
+      FUENTE PRIMARIA para acciones internacionales.
+      NO usar "Invertiste en [Empresa]" para evitar duplicar.
+
+  racional_portafolio_nacional:
+    remitente: racional@racional.cl
+    asunto: "Portafolio Acciones nacionales"    # Ej: "Invertiste $700.000 en tu Portafolio Acciones nacionales"
+    asunto_parcial: true
+    tipo: cuerpo_email
+    categoria: inversiones_nacionales
+    frecuencia: on_demand
+    gmail_query: 'from:racional@racional.cl subject:"Portafolio Acciones nacionales"'
+    nota: >
+      FUENTE PRIMARIA para portafolio nacional.
+      El monto varía, buscamos por "Portafolio Acciones nacionales".
+
+  # ── RACIONAL - IGNORADOS (evitar duplicación) ────────────
+
+  _racional_invertiste_en_IGNORADO:
+    remitente: racional@racional.cl
+    asunto: "Invertiste en [Empresa]"
+    nota: >
+      IGNORADO. Misma info que "Transacciones Racional Stocks".
+      Si se leyera, duplicaría las inversiones internacionales.
+
+  # ── VECTOR CAPITAL - VALIDACIÓN MENSUAL ──────────────────
+
+  vector_capital_comprobante:
+    remitente: dte_vector_capital@vectorcapital.cl
+    asunto: "El comprobante de tus últimas transacciones"
+    tipo: pdf_adjunto
+    pdfs_esperados: varios
+    requiere_clave: false
+    categoria: validacion_mensual
+    frecuencia: on_demand
+    gmail_query: "from:dte_vector_capital@vectorcapital.cl subject:El comprobante de tus últimas transacciones"
+    nota: >
+      VALIDACIÓN, no registro. Contiene PDFs con:
+        - Compras del período (validar vs transacciones ya registradas)
+        - Comisiones (buscar texto 'COMISION' en PDF → registrar como gasto)
+      Sirve para reconciliar posiciones a fin de mes.
+
+  # ── BUDA - CRYPTO ────────────────────────────────────────
+
+  buda_compra_programada:
+    remitente: soporte@buda.com
+    asunto: "Compra programada exitosa"
+    tipo: cuerpo_email
+    categoria: crypto
+    frecuencia: semanal
+    gmail_query: "from:soporte@buda.com subject:Compra programada exitosa"
+    activos:
+      - BTC
+      - ETH

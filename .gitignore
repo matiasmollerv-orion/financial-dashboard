@@ -1,0 +1,44 @@
+# Credenciales y datos sensibles
+.env
+*.env
+
+# PDFs con datos financieros (se guardan local, no en GitHub)
+data/raw/
+data/processed/
+data/backups/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+.venv/
+venv/
+env/
+*.egg-info/
+dist/
+build/
+
+# Jupyter
+.ipynb_checkpoints/
+*.ipynb
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Logs
+*.log
+logs/
+
+# Tokens OAuth guardados localmente
+token.json
+token.pickle
+
+# Streamlit secrets reales (usar secrets.toml.example como plantilla)
+.streamlit/secrets.toml
+
+# Credenciales Gmail
+credentials.json
