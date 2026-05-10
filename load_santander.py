@@ -128,7 +128,11 @@ print("=" * 60)
 
 USD_CLP = 901.76
 
-def clean_row(r, extra=None):
+# Columnas válidas por tabla (schema real en Supabase)
+GASTOS_COLS  = {"fecha", "descripcion", "monto", "moneda", "categoria", "fuente", "archivo"}
+CUENTA_COLS  = {"fecha", "descripcion", "monto", "saldo", "tipo", "moneda", "archivo"}
+
+def clean_row(r, extra=None, allowed_cols=None):
     row = {k: v for k, v in r.items() if k != "archivo"}
     if hasattr(row.get("fecha"), "isoformat"):
         row["fecha"] = row["fecha"].isoformat()
@@ -137,16 +141,23 @@ def clean_row(r, extra=None):
             row[k] = None
     if extra:
         row.update(extra)
+    # Filtrar solo columnas que existen en la tabla
+    if allowed_cols:
+        row = {k: v for k, v in row.items() if k in allowed_cols}
     return row
 
 def bulk_insert(tabla, rows):
     ok = 0
+    err_sample = None
     for row in rows:
         try:
             sb.table(tabla).insert(row).execute()
             ok += 1
-        except Exception:
-            pass
+        except Exception as e:
+            if err_sample is None:
+                err_sample = str(e)
+    if err_sample and ok == 0:
+        print(f"    ⚠️  Error de inserción (muestra): {err_sample}")
     return ok
 
 # Tarjeta CLP
@@ -157,10 +168,9 @@ if all_tarjeta_clp:
     for r in df.to_dict("records"):
         monto_abs = abs(float(r["monto"]))
         registros.append(clean_row(r, {
-            "monto_clp": monto_abs,
-            "tipo": "cargo" if float(r["monto"]) < 0 else "abono",
+            "monto": monto_abs,
             "moneda": "CLP",
-        }))
+        }, allowed_cols=GASTOS_COLS))
     n = bulk_insert("santander_gastos", registros)
     print(f"  ✅ Tarjeta CLP : {n:>5} filas  ({len(all_tarjeta_clp)} PDFs)")
 else:
@@ -173,11 +183,11 @@ if all_tarjeta_usd:
     registros = []
     for r in df.to_dict("records"):
         monto_abs = abs(float(r["monto"]))
+        # Guardar monto en USD; moneda="USD" para que el dashboard lo identifique
         registros.append(clean_row(r, {
-            "monto_clp": round(monto_abs * USD_CLP, 2),
-            "tipo": "cargo" if float(r["monto"]) < 0 else "abono",
+            "monto": monto_abs,
             "moneda": "USD",
-        }))
+        }, allowed_cols=GASTOS_COLS))
     n = bulk_insert("santander_gastos", registros)
     print(f"  ✅ Tarjeta USD : {n:>5} filas  ({len(all_tarjeta_usd)} PDFs)")
 else:
@@ -190,11 +200,12 @@ if all_cuenta:
     registros = []
     for r in df.to_dict("records"):
         monto_abs = abs(float(r["monto"]))
+        tipo_cc = "abono" if float(r["monto"]) > 0 else "cargo"
         registros.append(clean_row(r, {
-            "monto_clp": monto_abs,
-            "tipo": "abono" if float(r["monto"]) > 0 else "cargo",
+            "monto": monto_abs,
+            "tipo": tipo_cc,
             "moneda": "CLP",
-        }))
+        }, allowed_cols=CUENTA_COLS))
     n = bulk_insert("santander_cuenta", registros)
     print(f"  ✅ Cuenta CC   : {n:>5} filas  ({len(all_cuenta)} PDFs)")
 else:
