@@ -47,8 +47,15 @@ def render():
     df = categorizar_df(df_raw.copy())
     df["monto"] = pd.to_numeric(df["monto"], errors="coerce")
 
-    # Excluir Investments del análisis de gastos
-    df_gastos = df[df["top_level"] != "Investments"].copy()
+    # Excluir Investments y Pago TC del análisis de gastos
+    # (Pago TC son los pagos mensuales al banco, no gastos reales)
+    EXCLUIR = ["Investments"]
+    EXCLUIR_SUBS = ["Pago TC"]
+
+    df_gastos = df[
+        ~df["top_level"].isin(EXCLUIR) &
+        ~df["subcategoria"].isin(EXCLUIR_SUBS)
+    ].copy()
 
     # ── FILTROS ───────────────────────────────────────────
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
