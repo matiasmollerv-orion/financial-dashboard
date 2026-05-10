@@ -45,6 +45,8 @@ TIPO_MAP = {
     "CAP": "Acción", "SMU": "Acción",
     # Crypto
     "BTC": "Crypto", "ETH": "Crypto",
+    # Santander (acciones inputadas)
+    "ENELCHILE_STG": "Acción", "ENJOY_STG": "Acción", "LTM_STG": "Acción",
 }
 
 PAIS_MAP = {
@@ -96,6 +98,8 @@ PAIS_MAP = {
     "VNM": "Vietnam",
     # Crypto
     "BTC": "Global", "ETH": "Global",
+    # Santander (acciones inputadas)
+    "ENELCHILE_STG": "Chile", "ENJOY_STG": "Chile", "LTM_STG": "Chile",
 }
 
 def get_tipo(ticker: str, mercado: str = "") -> str:

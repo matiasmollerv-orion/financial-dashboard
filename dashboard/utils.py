@@ -136,13 +136,21 @@ def load_cartera():
 
 @st.cache_data(ttl=300)
 def load_racional():
-    """Carga transacciones Racional."""
+    """Carga transacciones Racional con monto_clp unificado."""
     import sys, os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
     from database.supabase_client import get_racional_transacciones
     df = get_racional_transacciones()
-    if not df.empty and "fecha" in df.columns:
+    if df.empty:
+        return df
+    if "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"])
+    # Unificar monto en CLP: nacional → monto_clp directo; internacional → monto_usd × USD/CLP
+    usd_clp = get_usd_clp()
+    if "monto_clp" in df.columns and "monto_usd" in df.columns:
+        df["monto_clp"] = pd.to_numeric(df["monto_clp"], errors="coerce")
+        df["monto_usd"] = pd.to_numeric(df["monto_usd"], errors="coerce")
+        df["monto_clp"] = df["monto_clp"].fillna(df["monto_usd"] * usd_clp)
     return df
 
 
