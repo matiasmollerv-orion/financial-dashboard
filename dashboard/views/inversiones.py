@@ -13,15 +13,16 @@ from dashboard.utils import (
     section_title, ASSET_COLORS,
     load_cartera, load_racional, load_buda, get_usd_clp,
 )
-from dashboard.mappings import get_tipo, get_pais
+from dashboard.mappings import get_tipo, get_pais, get_sector
 
 USD_CLP = get_usd_clp()
 
 
 def _enrich(df):
     df = df.copy()
-    df["tipo"] = df.apply(lambda r: get_tipo(r["ticker"], r.get("mercado", "")), axis=1)
-    df["pais"] = df.apply(lambda r: get_pais(r["ticker"], r.get("mercado", "")), axis=1)
+    df["tipo"]   = df.apply(lambda r: get_tipo(r["ticker"], r.get("mercado", "")), axis=1)
+    df["pais"]   = df.apply(lambda r: get_pais(r["ticker"], r.get("mercado", "")), axis=1)
+    df["sector"] = df.apply(lambda r: get_sector(r["ticker"], r.get("tipo", "")), axis=1)
     for col in ["precio_actual", "precio_compra", "cantidad"]:
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df["valor_usd"]     = df["cantidad"] * df["precio_actual"]
@@ -137,12 +138,22 @@ def render():
                 )
 
                 freq_map = {"Semana": "W", "Mes": "ME", "Quarter": "QE", "Año": "YE"}
-                label_map = {"Semana": "%Y-W%V", "Mes": "%Y-%m", "Quarter": None, "Año": "%Y"}
 
                 freq = freq_map[periodo]
-                df_r["periodo"] = df_r["fecha"].dt.to_period(
-                    {"W":"W","ME":"M","QE":"Q","YE":"Y"}[freq]
-                ).astype(str)
+                period_key = {"W":"W","ME":"M","QE":"Q","YE":"Y"}[freq]
+                df_r["_period"] = df_r["fecha"].dt.to_period(period_key)
+
+                if periodo == "Semana":
+                    # Formato "W10-23" (semana ISO 10 del año 2023)
+                    df_r["periodo"] = df_r["_period"].apply(
+                        lambda p: f"W{p.start_time.strftime('%V-%y')}"
+                    )
+                elif periodo == "Quarter":
+                    df_r["periodo"] = df_r["_period"].apply(
+                        lambda p: f"Q{p.quarter} {p.year}"
+                    )
+                else:
+                    df_r["periodo"] = df_r["_period"].astype(str)
 
                 grp = df_r.groupby(["periodo", "mercado"])["monto_clp"].sum().reset_index()
 
@@ -167,6 +178,43 @@ def render():
                 st.plotly_chart(fig2, use_container_width=True)
             else:
                 st.info("Sin historial de transacciones.")
+
+            # ── Gráfico por sector / industria ───────────────
+            st.divider()
+            section_title("Distribución por sector / industria")
+
+            df_sector = df_f.copy()
+            grp_sector = (df_sector.groupby(["tipo", "sector"])["valor_clp"]
+                          .sum().reset_index())
+            grp_sector = grp_sector[grp_sector["valor_clp"] > 0]
+
+            fig_sec = px.sunburst(
+                grp_sector,
+                path=["tipo", "sector"],
+                values="valor_clp",
+                color="tipo",
+                color_discrete_sequence=ASSET_COLORS,
+            )
+            fig_sec.update_traces(
+                hovertemplate="<b>%{label}</b><br>%{value:,.0f} CLP<br>%{percentParent:.1%} del tipo<extra></extra>",
+                textinfo="label+percent entry",
+            )
+            fig_sec.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)",
+                margin=dict(t=10, b=10, l=10, r=10),
+                height=420,
+                font_color="#ccd6f6",
+            )
+            st.plotly_chart(fig_sec, use_container_width=True)
+
+            # Tabla sector
+            grp_sec_tbl = (df_f.groupby("sector")["valor_clp"]
+                           .agg(Valor="sum", Posiciones="count")
+                           .reset_index().sort_values("Valor", ascending=False))
+            grp_sec_tbl["% Cartera"] = (grp_sec_tbl["Valor"] / df_f["valor_clp"].sum() * 100).round(1).astype(str) + "%"
+            grp_sec_tbl["Valor"] = grp_sec_tbl["Valor"].apply(fmt_clp)
+            grp_sec_tbl.columns = ["Sector", "Valor CLP", "Posiciones", "% Cartera"]
+            st.dataframe(grp_sec_tbl, hide_index=True, use_container_width=True)
 
             # Tabla
             section_title("Detalle completo")

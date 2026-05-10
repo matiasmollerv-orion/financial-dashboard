@@ -90,17 +90,96 @@ PAIS_MAP = {
     "MELI": "Latinoamérica", "NU": "Brasil",
     "SGML": "Canadá", "CCJ": "Canadá",
     # Fondos / Internacionales diversificados
-    "VT": "Global",   "VXUS": "Global", "VEU": "Global",
-    "IQLT": "Global", "BNDX": "Global", "IGF": "Global",
+    "VT": "Global Diversificado",   "VXUS": "Global ex-USA", "VEU": "Global ex-USA",
+    "IQLT": "Global Desarrollado", "BNDX": "Bonos Globales", "IGF": "Infraestructura Global",
     "EEM": "Mercados Emergentes", "VWO": "Mercados Emergentes",
     "EWJ": "Japón", "EZU": "Europa",
     "ILF": "Latinoamérica", "INDA": "India",
     "VNM": "Vietnam",
     # Crypto
-    "BTC": "Global", "ETH": "Global",
+    "BTC": "Criptomonedas", "ETH": "Criptomonedas",
     # Santander (acciones inputadas)
     "ENELCHILE_STG": "Chile", "ENJOY_STG": "Chile", "LTM_STG": "Chile",
 }
+
+# ── SECTOR MAP ────────────────────────────────────────────
+SECTOR_MAP = {
+    # Tecnología
+    "AMD": "Tecnología", "NVDA": "Tecnología", "MSFT": "Tecnología",
+    "GOOGL": "Tecnología", "META": "Tecnología", "AVGO": "Tecnología",
+    "ANET": "Tecnología", "MU": "Tecnología", "TSM": "Tecnología",
+    "ASML": "Tecnología", "IONQ": "Tecnología", "QUBT": "Tecnología",
+    "RGTI": "Tecnología", "ONDS": "Tecnología", "VRT": "Tecnología",
+    "ZETA": "Tecnología", "FTEC": "ETF Tech",
+    # Software / Cloud
+    "CRWD": "Software/Cloud", "PANW": "Software/Cloud",
+    # E-commerce / Consumo
+    "AMZN": "E-commerce/Consumo", "MELI": "E-commerce/Consumo",
+    "ABNB": "E-commerce/Consumo", "WMT": "E-commerce/Consumo",
+    "BJ": "E-commerce/Consumo", "SOFI": "Fintech",
+    # Finanzas
+    "KKR": "Finanzas", "APO": "Finanzas", "FIG": "Finanzas",
+    "NU": "Fintech", "ITUB": "Finanzas",
+    # Salud / Biotech
+    "UNH": "Salud", "LLY": "Salud", "NVO": "Salud",
+    # Energía / Recursos
+    "CEG": "Energía/Nuclear", "CCJ": "Energía/Nuclear",
+    "BE": "Energía Limpia", "SGML": "Minería/Litio",
+    "SQM": "Minería/Litio", "COPEC": "Energía",
+    "COLBUN": "Energía", "ENELAM": "Energía", "IAM": "Energía",
+    # Defensa / Aeroespacial
+    "AVAV": "Defensa", "ASTS": "Defensa/Espacio",
+    "PWR": "Infraestructura",
+    # Retail/Real Estate Chile
+    "CENCOSUD": "Retail Chile", "PARAUCO": "Real Estate Chile",
+    "SMU": "Retail Chile", "LTM": "Aviación",
+    "CHILE": "Banca Chile", "BCI": "Banca Chile",
+    "BSANTANDER": "Banca Chile", "CMPC": "Forestal/Papel",
+    "CAP": "Minería", "QUINENCO": "Holding",
+    # ETFs por sector
+    "QQQ": "ETF Nasdaq 100", "VOO": "ETF S&P 500", "VTI": "ETF Mercado USA",
+    "VT": "ETF Global", "VXUS": "ETF ex-USA", "VEU": "ETF ex-USA",
+    "RSP": "ETF S&P 500 EW", "ESGV": "ETF ESG", "VTV": "ETF Value",
+    "VBR": "ETF Small Cap", "IJR": "ETF Small Cap",
+    "QUAL": "ETF Quality", "IQLT": "ETF Quality Intl",
+    "ARTY": "ETF AI/Robótica", "ROBO": "ETF Robótica",
+    "PICK": "ETF Minería", "REMX": "ETF Metales Raros",
+    "LIT": "ETF Litio", "CPER": "ETF Cobre",
+    "EEM": "ETF Emergentes", "VWO": "ETF Emergentes",
+    "EWJ": "ETF Japón", "EWZ": "ETF Brasil",
+    "EZU": "ETF Europa", "ILF": "ETF Latam",
+    "INDA": "ETF India", "VNM": "ETF Vietnam",
+    "IGF": "ETF Infraestructura", "SCHH": "ETF Real Estate",
+    "BND": "ETF Bonos USA", "BNDX": "ETF Bonos Globales",
+    "IEF": "ETF Bonos 7-10Y", "VGSH": "ETF Bonos 1-3Y",
+    "VTIP": "ETF TIPS", "SCHP": "ETF TIPS", "TMF": "ETF Bonos 20Y 3x",
+    "GLDM": "ETF Oro", "GLD": "ETF Oro",
+    "BITO": "ETF Crypto",
+    # Crypto
+    "BTC": "Crypto", "ETH": "Crypto",
+    # Santander STG
+    "ENELCHILE_STG": "Energía", "ENJOY_STG": "Entretenimiento",
+    "LTM_STG": "Aviación",
+    # Otros
+    "PURR": "Otro", "VCX": "Otro",
+}
+
+
+def get_sector(ticker: str, tipo: str = "") -> str:
+    t = ticker.upper()
+    if t in SECTOR_MAP:
+        return SECTOR_MAP[t]
+    # Fallback por tipo
+    if "Renta Fija" in tipo:
+        return "Renta Fija"
+    if "Commodity" in tipo:
+        return "Commodity"
+    if "Crypto" in tipo:
+        return "Crypto"
+    if tipo == "ETF":
+        return "ETF Diversificado"
+    return "Otro"
+
 
 def get_tipo(ticker: str, mercado: str = "") -> str:
     if mercado == "crypto":

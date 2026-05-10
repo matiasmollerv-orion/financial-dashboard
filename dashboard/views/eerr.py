@@ -10,6 +10,7 @@ from dashboard.utils import (
     fmt_clp, fmt_pct, section_title,
     load_ingresos, load_gastos, load_racional,
 )
+from dashboard.categorias import categorizar_df
 
 
 def render():
@@ -139,26 +140,39 @@ def render():
 
     st.divider()
 
-    # ── Tabla EERR detallada ──────────────────────────────
+    # ── Tabla EERR detallada (transpuesta: filas = líneas, columnas = meses) ──
     section_title("Estado de Resultados mensual detallado")
 
-    tbl = df_eerr.copy()
-    for col in ["Ingresos","Gastos","Margen Bruto","Inversiones","Resultado Operacional"]:
-        tbl[col] = tbl[col].apply(fmt_clp)
-    for col in ["Tasa Gasto %","Tasa Inversión %","Tasa Ahorro %"]:
-        tbl[col] = tbl[col].apply(fmt_pct)
-    st.dataframe(tbl, hide_index=True, use_container_width=True)
+    tbl_num = df_eerr.copy()
+    # Formatear columnas de monto
+    lineas_clp = ["Ingresos", "Gastos", "Margen Bruto", "Inversiones", "Resultado Operacional"]
+    lineas_pct = ["Tasa Gasto %", "Tasa Inversión %", "Tasa Ahorro %"]
+    tbl_fmt = tbl_num.copy()
+    for col in lineas_clp:
+        tbl_fmt[col] = tbl_fmt[col].apply(fmt_clp)
+    for col in lineas_pct:
+        tbl_fmt[col] = tbl_fmt[col].apply(fmt_pct)
+
+    # Transponer: Mes como columna de índice → columnas del DF
+    tbl_T = tbl_fmt.set_index("Mes")[lineas_clp + lineas_pct].T
+    tbl_T.index.name = "Línea"
+    tbl_T = tbl_T.reset_index()
+    st.dataframe(tbl_T, hide_index=True, use_container_width=True)
 
     # ── Desglose categorías de gasto ─────────────────────
-    if not df_gastos.empty and "categoria" in df_gastos.columns:
+    if not df_gastos.empty:
         st.divider()
         section_title("Desglose de gastos por categoría")
         monto_col = "monto_clp" if "monto_clp" in df_gastos.columns else "monto"
-        df_g = df_gastos.copy()
+        df_g = categorizar_df(df_gastos.copy())
         df_g[monto_col] = pd.to_numeric(df_g[monto_col], errors="coerce")
         df_g["mes"] = df_g["fecha"].dt.to_period("M").astype(str)
         df_g = df_g[df_g["mes"].isin(todos_f)]
-        grp = df_g.groupby("categoria")[monto_col].sum().reset_index().sort_values(monto_col, ascending=False)
-        grp.columns = ["Categoría", "Total"]
-        grp["Total"] = grp["Total"].apply(fmt_clp)
+        df_g = df_g[df_g["top_level"] != "Investments"]
+        grp = (df_g.groupby(["top_level", "subcategoria"])[monto_col]
+               .sum().reset_index().sort_values(monto_col, ascending=False))
+        total_eerr = grp[monto_col].sum()
+        grp["% Total"] = (grp[monto_col] / total_eerr * 100).round(1).astype(str) + "%"
+        grp[monto_col] = grp[monto_col].apply(fmt_clp)
+        grp.columns = ["Nivel", "Subcategoría", "Total", "% Total"]
         st.dataframe(grp, hide_index=True, use_container_width=True)
