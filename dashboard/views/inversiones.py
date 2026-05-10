@@ -335,20 +335,59 @@ def render():
             st.info("Sin transacciones.")
         else:
             df_r = df_racional.copy()
-            df_r["monto_clp"] = pd.to_numeric(df_r.get("monto_clp", 0), errors="coerce")
+            df_r["monto_usd"] = pd.to_numeric(df_r.get("monto_usd", pd.Series(dtype=float)), errors="coerce")
+            df_r["monto_clp"] = pd.to_numeric(df_r.get("monto_clp", pd.Series(dtype=float)), errors="coerce")
+            # Monto efectivo en USD (ventas en negativo)
+            df_r["monto_usd_ef"] = df_r.apply(
+                lambda r: r["monto_usd"] if pd.notna(r["monto_usd"])
+                          else (r["monto_clp"] / USD_CLP if pd.notna(r["monto_clp"]) else 0),
+                axis=1
+            )
 
-            c1, c2, c3 = st.columns(3)
-            with c1: st.metric("Transacciones", str(len(df_r)))
-            with c2: st.metric("Total invertido CLP", fmt_clp(df_r["monto_clp"].sum()))
-            with c3:
-                if "ticker" in df_r.columns:
-                    st.metric("Tickers únicos", str(df_r["ticker"].nunique()))
+            compras_usd = df_r[df_r["tipo"]=="compra"]["monto_usd_ef"].sum()
+            ventas_usd  = df_r[df_r["tipo"]=="venta"]["monto_usd_ef"].sum()
+            neto_usd    = compras_usd - ventas_usd
 
-            col_f1, col_f2 = st.columns(2)
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: st.metric("Compras (USD)", fmt_usd(compras_usd, 0))
+            with c2: st.metric("Ventas (USD)",  fmt_usd(ventas_usd, 0))
+            with c3: st.metric("Inversión neta (USD)", fmt_usd(neto_usd, 0),
+                                help="Lo realmente puesto de tu bolsillo")
+            with c4: st.metric("Tickers únicos", str(df_r["ticker"].nunique()) if "ticker" in df_r.columns else "-")
+
+            st.divider()
+
+            # Gráfico compras vs ventas por mes
+            section_title("Flujo mensual: compras vs ventas")
+            df_r["_mes"] = pd.to_datetime(df_r["fecha"]).dt.to_period("M").astype(str)
+            grp_cv = df_r.groupby(["_mes","tipo"])["monto_usd_ef"].sum().reset_index()
+            grp_cv["monto_plot"] = grp_cv.apply(
+                lambda r: r["monto_usd_ef"] if r["tipo"]=="compra" else -r["monto_usd_ef"], axis=1
+            )
+            fig_cv = px.bar(
+                grp_cv, x="_mes", y="monto_plot", color="tipo",
+                barmode="relative",
+                color_discrete_map={"compra": "#4e79a7", "venta": "#e15759"},
+                labels={"_mes": "", "monto_plot": "USD", "tipo": ""},
+            )
+            fig_cv.update_layout(
+                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                font_color="#ccd6f6", margin=dict(t=10,b=10,l=10,r=10), height=280,
+                xaxis=dict(showgrid=False, tickangle=-45),
+                yaxis=dict(gridcolor="#2d3250", tickprefix="$"),
+                legend=dict(orientation="h", y=1.1),
+            )
+            st.plotly_chart(fig_cv, use_container_width=True)
+
+            # Filtros
+            col_f1, col_f2, col_f3 = st.columns(3)
             with col_f1:
+                tipo_ops = ["Todos", "compra", "venta"]
+                tipo_sel2 = st.selectbox("Tipo", tipo_ops, key="hist_tipo")
+            with col_f2:
                 mercados = ["Todos"] + sorted(df_r["mercado"].dropna().unique().tolist())
                 m_sel = st.selectbox("Mercado", mercados, key="hist_m")
-            with col_f2:
+            with col_f3:
                 if "ticker" in df_r.columns:
                     tks = ["Todos"] + sorted(df_r["ticker"].dropna().unique().tolist())
                     tk_sel = st.selectbox("Ticker", tks, key="hist_tk")
@@ -356,13 +395,15 @@ def render():
                     tk_sel = "Todos"
 
             df_rf = df_r.copy()
+            if tipo_sel2 != "Todos": df_rf = df_rf[df_rf["tipo"] == tipo_sel2]
             if m_sel != "Todos": df_rf = df_rf[df_rf["mercado"] == m_sel]
             if tk_sel != "Todos" and "ticker" in df_rf.columns: df_rf = df_rf[df_rf["ticker"] == tk_sel]
 
-            show_cols = [c for c in ["fecha","mercado","tipo","ticker","acciones","precio","monto_clp","monto_usd"] if c in df_rf.columns]
+            section_title(f"Detalle transacciones ({len(df_rf)})")
+            show_cols = [c for c in ["fecha","tipo","mercado","ticker","empresa","acciones","precio_usd","monto_usd"] if c in df_rf.columns]
             tbl = df_rf[show_cols].copy().sort_values("fecha", ascending=False)
             if "fecha" in tbl.columns: tbl["fecha"] = pd.to_datetime(tbl["fecha"]).dt.strftime("%Y-%m-%d")
-            if "monto_clp" in tbl.columns: tbl["monto_clp"] = tbl["monto_clp"].apply(fmt_clp)
             if "monto_usd" in tbl.columns: tbl["monto_usd"] = pd.to_numeric(tbl["monto_usd"], errors="coerce").apply(lambda x: fmt_usd(x,2) if pd.notna(x) else "-")
+            if "precio_usd" in tbl.columns: tbl["precio_usd"] = pd.to_numeric(tbl["precio_usd"], errors="coerce").apply(lambda x: fmt_usd(x,2) if pd.notna(x) else "-")
             tbl.columns = [c.replace("_"," ").title() for c in tbl.columns]
             st.dataframe(tbl, hide_index=True, use_container_width=True)
