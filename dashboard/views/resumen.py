@@ -2,6 +2,7 @@
 # VISTA: RESUMEN PATRIMONIAL
 # ============================================================
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -26,7 +27,8 @@ def _enrich(df: pd.DataFrame) -> pd.DataFrame:
     df["cantidad"]       = pd.to_numeric(df["cantidad"],       errors="coerce")
     df["valor_usd"]  = df["cantidad"] * df["precio_actual"]
     df["costo_usd"]  = df["cantidad"] * df["precio_compra"]
-    df["moneda"] = df.get("moneda", "USD")
+    if "moneda" not in df.columns:
+        df["moneda"] = "USD"
     df["valor_clp"] = df.apply(
         lambda r: r["valor_usd"] if r.get("moneda") == "CLP" else r["valor_usd"] * usd_clp,
         axis=1
@@ -36,7 +38,8 @@ def _enrich(df: pd.DataFrame) -> pd.DataFrame:
         axis=1
     )
     df["ganancia_clp"] = df["valor_clp"] - df["costo_clp"]
-    df["retorno_pct"]  = (df["ganancia_clp"] / df["costo_clp"].replace(0, pd.NA) * 100).round(2)
+    costo_safe = df["costo_clp"].where(df["costo_clp"] != 0, other=np.nan)
+    df["retorno_pct"]  = (df["ganancia_clp"] / costo_safe * 100).round(2)
     return df
 
 
@@ -190,7 +193,8 @@ def render():
         Costo_CLP=("costo_clp", "sum"),
         Ganancia_CLP=("ganancia_clp", "sum"),
     ).reset_index().sort_values("Valor_CLP", ascending=False)
-    grp_full["Retorno %"] = (grp_full["Ganancia_CLP"] / grp_full["Costo_CLP"].replace(0, pd.NA) * 100).round(1)
+    costo_safe2 = grp_full["Costo_CLP"].where(grp_full["Costo_CLP"] != 0, other=np.nan)
+    grp_full["Retorno %"] = (grp_full["Ganancia_CLP"] / costo_safe2 * 100).round(1)
     grp_full["Valor_CLP"]    = grp_full["Valor_CLP"].apply(fmt_clp)
     grp_full["Costo_CLP"]    = grp_full["Costo_CLP"].apply(fmt_clp)
     grp_full["Ganancia_CLP"] = grp_full["Ganancia_CLP"].apply(fmt_clp)

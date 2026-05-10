@@ -2,6 +2,7 @@
 # VISTA: INVERSIONES
 # ============================================================
 
+import numpy as np
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -25,11 +26,13 @@ def _enrich(df):
         df[col] = pd.to_numeric(df[col], errors="coerce")
     df["valor_usd"]     = df["cantidad"] * df["precio_actual"]
     df["costo_usd"]     = df["cantidad"] * df["precio_compra"]
-    df["moneda"]        = df.get("moneda", "USD")
+    if "moneda" not in df.columns:
+        df["moneda"] = "USD"
     df["valor_clp"]     = df.apply(lambda r: r["valor_usd"] if r.get("moneda") == "CLP" else r["valor_usd"] * USD_CLP, axis=1)
     df["costo_clp"]     = df.apply(lambda r: r["costo_usd"] if r.get("moneda") == "CLP" else r["costo_usd"] * USD_CLP, axis=1)
     df["ganancia_clp"]  = df["valor_clp"] - df["costo_clp"]
-    df["retorno_pct"]   = (df["ganancia_clp"] / df["costo_clp"].replace(0, pd.NA) * 100).round(2)
+    costo_safe = df["costo_clp"].where(df["costo_clp"] != 0, other=np.nan)
+    df["retorno_pct"]   = (df["ganancia_clp"] / costo_safe * 100).round(2)
     return df
 
 
