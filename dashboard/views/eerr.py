@@ -20,6 +20,17 @@ def render():
     df_gastos    = load_gastos()
     df_racional  = load_racional()
 
+    # Excluir pagos de tarjeta e inversiones (para no duplicar gastos reales)
+    EXCLUIR_TOP  = ["Investments"]
+    EXCLUIR_SUBS = ["Pago TC"]
+    if not df_gastos.empty:
+        df_gastos = categorizar_df(df_gastos.copy())
+        df_gastos["monto"] = pd.to_numeric(df_gastos["monto"], errors="coerce")
+        df_gastos = df_gastos[
+            ~df_gastos["top_level"].isin(EXCLUIR_TOP) &
+            ~df_gastos["subcategoria"].isin(EXCLUIR_SUBS)
+        ]
+
     # ── Preparar datos mensuales ──────────────────────────
     def to_mensual(df, col):
         if df.empty or col not in df.columns:
@@ -164,11 +175,11 @@ def render():
         st.divider()
         section_title("Desglose de gastos por categoría")
         monto_col = "monto_clp" if "monto_clp" in df_gastos.columns else "monto"
-        df_g = categorizar_df(df_gastos.copy())
+        # df_gastos ya tiene categorías y está filtrado (sin Pago TC ni Investments)
+        df_g = df_gastos.copy()
         df_g[monto_col] = pd.to_numeric(df_g[monto_col], errors="coerce")
         df_g["mes"] = df_g["fecha"].dt.to_period("M").astype(str)
         df_g = df_g[df_g["mes"].isin(todos_f)]
-        df_g = df_g[df_g["top_level"] != "Investments"]
         grp = (df_g.groupby(["top_level", "subcategoria"])[monto_col]
                .sum().reset_index().sort_values(monto_col, ascending=False))
         total_eerr = grp[monto_col].sum()
