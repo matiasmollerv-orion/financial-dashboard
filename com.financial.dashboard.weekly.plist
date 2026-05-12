@@ -12,11 +12,9 @@
         <string>/Users/matiasmollerv/Documents/Claude/FinancialDashboard/run_weekly_update.sh</string>
     </array>
 
-    <!-- Ejecutar cada lunes a las 07:00 AM -->
+    <!-- Ejecutar todos los días a las 07:00 AM -->
     <key>StartCalendarInterval</key>
     <dict>
-        <key>Weekday</key>
-        <integer>1</integer>
         <key>Hour</key>
         <integer>7</integer>
         <key>Minute</key>

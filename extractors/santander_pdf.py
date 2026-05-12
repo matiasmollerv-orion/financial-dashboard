@@ -167,46 +167,125 @@ def parse_tarjeta_credito(pdf_path: Path) -> pd.DataFrame:
 # CUENTA CORRIENTE
 # ------------------------------------------------------------
 
+def _join_col_words(words, x_min, x_max):
+    """Une fragmentos de texto dentro de un rango de columna X."""
+    parts = [w["text"] for w in words if x_min <= w["x0"] < x_max]
+    joined = "".join(parts)
+    # Normalizar separador de miles/decimal chileno: 1.234.567 → float
+    joined = joined.strip()
+    return joined if joined else None
+
+
+def _clp_to_float(s: str) -> float:
+    """Convierte '1.234.567' o '192.317' → float CLP."""
+    s = s.replace(".", "").replace(",", ".")
+    return float(s)
+
+
 def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
     """
-    Extrae movimientos de la Cartola Mensual de Cuenta Corriente.
-    Retorna DataFrame con columnas estandarizadas.
+    Extrae movimientos de la Cartola Mensual de Cuenta Corriente Santander.
+    Usa posiciones X de las palabras para distinguir columnas:
+      FECHA (<60) | SUCURSAL (60-120) | DESC (120-380) | CARGO (380-450) | ABONO (450-545) | SALDO (>545)
     """
     unlocked = unlock_pdf(pdf_path)
     rows = []
+    year = None
 
     with pdfplumber.open(str(unlocked)) as pdf:
         for page in pdf.pages:
-            text = page.extract_text() or ""
-            lines = text.split("\n")
+            # Extraer año del texto crudo (header: "31/03/2025 30/04/2025")
+            raw = page.extract_text() or ""
+            if year is None:
+                m = re.search(r"\d{2}/\d{2}/(\d{4})", raw)
+                if m:
+                    year = int(m.group(1))
 
-            for line in lines:
-                # Patrón: fecha + descripción + cargo/abono + saldo
-                match = re.match(
-                    r"(\d{2}/\d{2}/\d{4})\s+(.+?)\s+([-]?\d[\d\.,]+)\s+([-]?\d[\d\.,]+)\s*$",
-                    line.strip()
-                )
-                if match:
-                    fecha_str, descripcion, monto_str, saldo_str = match.groups()
-                    try:
-                        fecha = datetime.strptime(fecha_str, "%d/%m/%Y").date()
-                        monto = float(monto_str.replace(".", "").replace(",", "."))
-                        saldo = float(saldo_str.replace(".", "").replace(",", "."))
-                        rows.append({
-                            "fecha":       fecha,
-                            "descripcion": descripcion.strip(),
-                            "monto":       monto,
-                            "saldo":       saldo,
-                            "moneda":      "CLP",
-                            "tipo":        "abono" if monto > 0 else "cargo",
-                            "fuente":      "santander_cuenta",
-                            "archivo":     pdf_path.name,
-                        })
-                    except ValueError:
+            words = page.extract_words()
+
+            # Agrupar palabras por fila (misma posición Y aproximada)
+            rows_by_y = {}
+            for w in words:
+                y_key = round(w["top"] / 6) * 6
+                rows_by_y.setdefault(y_key, []).append(w)
+
+            for y_key in sorted(rows_by_y):
+                line_words = sorted(rows_by_y[y_key], key=lambda w: w["x0"])
+
+                # La fila debe empezar con DD/MM en columna FECHA (x < 60)
+                fecha_words = [w for w in line_words if w["x0"] < 60]
+                if not fecha_words:
+                    continue
+                fecha_text = fecha_words[0]["text"]
+                if not re.match(r"^\d{2}/\d{2}$", fecha_text):
+                    continue
+
+                # Descripción: palabras en x 120–380, excluyendo N°DCTO (solo dígitos largos)
+                desc_words = [w for w in line_words if 120 <= w["x0"] < 380]
+                desc_parts = []
+                for w in desc_words:
+                    # Saltar si es solo un número largo (N° DCTO, ≥7 dígitos)
+                    if re.match(r"^\d{7,}$", w["text"]):
                         continue
+                    desc_parts.append(w["text"])
+                descripcion = " ".join(desc_parts).strip()
+                if not descripcion:
+                    continue
+
+                # Cargo: x 380–450
+                cargo_str = _join_col_words(line_words, 380, 450)
+                # Abono: x 450–545
+                abono_str = _join_col_words(line_words, 450, 545)
+                # Saldo: x > 545
+                saldo_str = _join_col_words(line_words, 545, 9999)
+
+                # Determinar monto y tipo
+                monto = None
+                tipo = None
+                try:
+                    if cargo_str and re.search(r"\d", cargo_str):
+                        monto = _clp_to_float(cargo_str)
+                        tipo = "cargo"
+                    elif abono_str and re.search(r"\d", abono_str):
+                        monto = _clp_to_float(abono_str)
+                        tipo = "abono"
+                except (ValueError, ZeroDivisionError):
+                    continue
+
+                if monto is None or monto <= 0:
+                    continue
+
+                saldo = None
+                if saldo_str and re.search(r"\d", saldo_str):
+                    try:
+                        saldo = _clp_to_float(saldo_str)
+                    except ValueError:
+                        pass
+
+                # Construir fecha completa
+                try:
+                    dia = int(fecha_text[:2])
+                    mes = int(fecha_text[3:])
+                    y   = year or datetime.now().year
+                    from datetime import date as date_cls
+                    fecha = str(date_cls(y, mes, dia))
+                except (ValueError, TypeError):
+                    continue
+
+                rows.append({
+                    "fecha":       fecha,
+                    "descripcion": descripcion,
+                    "monto":       monto,
+                    "saldo":       saldo,
+                    "moneda":      "CLP",
+                    "tipo":        tipo,
+                    "fuente":      "santander_cuenta",
+                    "archivo":     pdf_path.name,
+                })
 
     df = pd.DataFrame(rows)
     if not df.empty:
+        df = df.drop_duplicates(subset=["fecha", "descripcion", "monto"])
         df = df.sort_values("fecha").reset_index(drop=True)
     print(f"  📄 Cuenta corriente: {len(df)} movimientos extraídos")
     return df

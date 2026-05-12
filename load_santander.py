@@ -114,13 +114,32 @@ all_cuenta      = []
 
 pdfs = sorted(PDF_DIR.glob("*.pdf"))
 pdfs = [p for p in pdfs if "_unlocked" not in p.stem]
-print(f"\n📂 {len(pdfs)} PDFs a procesar")
+
+# En modo incremental: solo procesar PDFs cuya fecha en el nombre sea reciente
+if args.days:
+    from datetime import datetime, timedelta
+    cutoff = datetime.now() - timedelta(days=args.days)
+    def pdf_es_reciente(p):
+        # Nombre empieza con YYYYMMDD_
+        import re
+        m = re.match(r"(\d{8})_", p.name)
+        if not m:
+            return False  # sin fecha → ignorar en modo incremental
+        try:
+            return datetime.strptime(m.group(1), "%Y%m%d") >= cutoff
+        except ValueError:
+            return False
+    pdfs_todos = pdfs
+    pdfs = [p for p in pdfs if pdf_es_reciente(p)]
+    print(f"\n📂 {len(pdfs)} PDFs recientes (de {len(pdfs_todos)} totales) a procesar")
+else:
+    print(f"\n📂 {len(pdfs)} PDFs a procesar")
 
 for pdf_path in pdfs:
     name_lower = pdf_path.stem.lower()
     print(f"\n  📄 {pdf_path.name}")
     try:
-        es_cuenta  = any(k in name_lower for k in ["cartola", "cuenta", "corriente"])
+        es_cuenta  = any(k in name_lower for k in ["cartola", "cuenta", "corriente", "_cc"])
         es_dolar   = any(k in name_lower for k in ["dolar", "usd", "dollar"])
 
         if es_cuenta:
@@ -163,19 +182,60 @@ def clean_row(r, extra=None, allowed_cols=None):
         row = {k: v for k, v in row.items() if k in allowed_cols}
     return row
 
-def bulk_insert(tabla, rows):
+# ── Cargar claves existentes para deduplicar ──────────────
+print("\n🔍 Cargando claves existentes para deduplicar...")
+
+existing_gastos = sb.table("santander_gastos").select("fecha,descripcion,monto,moneda").execute()
+existing_gastos_keys = set(
+    (r["fecha"], (r["descripcion"] or "").strip().upper(), str(round(float(r["monto"] or 0), 0)), r["moneda"])
+    for r in existing_gastos.data
+)
+
+existing_cuenta = sb.table("santander_cuenta").select("fecha,descripcion,monto,moneda").execute()
+existing_cuenta_keys = set(
+    (r["fecha"], (r["descripcion"] or "").strip().upper(), str(round(float(r["monto"] or 0), 0)), r["moneda"])
+    for r in existing_cuenta.data
+)
+print(f"   santander_gastos: {len(existing_gastos_keys)} filas existentes")
+print(f"   santander_cuenta: {len(existing_cuenta_keys)} filas existentes")
+
+
+def make_key_gastos(row):
+    return (
+        row.get("fecha"),
+        str(row.get("descripcion") or "").strip().upper(),
+        str(round(float(row.get("monto") or 0), 0)),
+        row.get("moneda"),
+    )
+
+def make_key_cuenta(row):
+    return (
+        row.get("fecha"),
+        str(row.get("descripcion") or "").strip().upper(),
+        str(round(float(row.get("monto") or 0), 0)),
+        row.get("moneda"),
+    )
+
+
+def bulk_insert(tabla, rows, existing_keys, make_key):
     ok = 0
+    skip = 0
     err_sample = None
     for row in rows:
+        key = make_key(row)
+        if key in existing_keys:
+            skip += 1
+            continue
         try:
             sb.table(tabla).insert(row).execute()
+            existing_keys.add(key)
             ok += 1
         except Exception as e:
             if err_sample is None:
                 err_sample = str(e)
     if err_sample and ok == 0:
         print(f"    ⚠️  Error de inserción (muestra): {err_sample}")
-    return ok
+    return ok, skip
 
 # Tarjeta CLP
 if all_tarjeta_clp:
@@ -188,8 +248,8 @@ if all_tarjeta_clp:
             "monto": monto_abs,
             "moneda": "CLP",
         }, allowed_cols=GASTOS_COLS))
-    n = bulk_insert("santander_gastos", registros)
-    print(f"  ✅ Tarjeta CLP : {n:>5} filas  ({len(all_tarjeta_clp)} PDFs)")
+    n, s = bulk_insert("santander_gastos", registros, existing_gastos_keys, make_key_gastos)
+    print(f"  ✅ Tarjeta CLP : {n:>5} nuevas  {s:>5} ya existían  ({len(all_tarjeta_clp)} PDFs)")
 else:
     print("  ⚠️  Tarjeta CLP : sin datos")
 
@@ -200,13 +260,12 @@ if all_tarjeta_usd:
     registros = []
     for r in df.to_dict("records"):
         monto_abs = abs(float(r["monto"]))
-        # Guardar monto en USD; moneda="USD" para que el dashboard lo identifique
         registros.append(clean_row(r, {
             "monto": monto_abs,
             "moneda": "USD",
         }, allowed_cols=GASTOS_COLS))
-    n = bulk_insert("santander_gastos", registros)
-    print(f"  ✅ Tarjeta USD : {n:>5} filas  ({len(all_tarjeta_usd)} PDFs)")
+    n, s = bulk_insert("santander_gastos", registros, existing_gastos_keys, make_key_gastos)
+    print(f"  ✅ Tarjeta USD : {n:>5} nuevas  {s:>5} ya existían  ({len(all_tarjeta_usd)} PDFs)")
 else:
     print("  ⚠️  Tarjeta USD : sin datos")
 
@@ -223,8 +282,8 @@ if all_cuenta:
             "tipo": tipo_cc,
             "moneda": "CLP",
         }, allowed_cols=CUENTA_COLS))
-    n = bulk_insert("santander_cuenta", registros)
-    print(f"  ✅ Cuenta CC   : {n:>5} filas  ({len(all_cuenta)} PDFs)")
+    n, s = bulk_insert("santander_cuenta", registros, existing_cuenta_keys, make_key_cuenta)
+    print(f"  ✅ Cuenta CC   : {n:>5} nuevas  {s:>5} ya existían  ({len(all_cuenta)} PDFs)")
 else:
     print("  ⚠️  Cuenta CC   : sin datos")
 

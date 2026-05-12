@@ -1,0 +1,49 @@
+name: Daily Financial Update
+
+on:
+  schedule:
+    # 11:00 UTC = 08:00 Chile (UTC-3 verano / UTC-4 invierno)
+    - cron: '0 11 * * *'
+  workflow_dispatch:   # también permite correrlo manualmente desde GitHub
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Reconstruct Gmail token
+        run: |
+          mkdir -p config
+          echo "${{ secrets.GMAIL_TOKEN_PICKLE }}" | base64 -d > config/token.pickle
+          echo "${{ secrets.GMAIL_CREDENTIALS }}" | base64 -d > config/credentials.json
+
+      - name: Create .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
+          echo "SANTANDER_PDF_PASSWORD=${{ secrets.SANTANDER_PDF_PASSWORD }}" >> .env
+
+      - name: Run Santander update
+        run: python load_santander.py --days 14
+
+      - name: Run Racional ventas update
+        run: python load_racional_ventas.py --days 14
+
+      - name: Run Racional compras update (if exists)
+        run: |
+          if [ -f load_racional.py ]; then
+            python load_racional.py --days 14
+          fi
