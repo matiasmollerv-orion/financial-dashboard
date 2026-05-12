@@ -180,7 +180,7 @@ def load_ingresos():
 
 @st.cache_data(ttl=300)
 def load_gastos():
-    """Carga gastos Santander."""
+    """Carga gastos Santander (todas las filas, paginado)."""
     import sys, os
     sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
     from database.supabase_client import get_gastos

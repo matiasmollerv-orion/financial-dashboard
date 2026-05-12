@@ -119,13 +119,26 @@ def insertar_ingreso(fecha: str, concepto: str, monto: float, moneda: str = "CLP
 
 # ── LECTURA DE DATOS ──────────────────────────────────────
 
+def _fetch_all(query, page_size: int = 1000) -> list:
+    """Pagina automáticamente para superar el límite de 1000 filas de Supabase."""
+    all_data = []
+    page = 0
+    while True:
+        start = page * page_size
+        result = query.range(start, start + page_size - 1).execute()
+        all_data.extend(result.data)
+        if len(result.data) < page_size:
+            break
+        page += 1
+    return all_data
+
+
 def get_racional_transacciones(mercado: str = None) -> pd.DataFrame:
     sb = get_client()
     q = sb.table("racional_transacciones").select("*").order("fecha", desc=True)
     if mercado:
         q = q.eq("mercado", mercado)
-    result = q.execute()
-    return pd.DataFrame(result.data)
+    return pd.DataFrame(_fetch_all(q))
 
 
 def get_buda_crypto(activo: str = None) -> pd.DataFrame:
@@ -133,8 +146,7 @@ def get_buda_crypto(activo: str = None) -> pd.DataFrame:
     q = sb.table("buda_crypto").select("*").order("fecha", desc=True)
     if activo:
         q = q.eq("activo", activo)
-    result = q.execute()
-    return pd.DataFrame(result.data)
+    return pd.DataFrame(_fetch_all(q))
 
 
 def get_gastos(desde: str = None, hasta: str = None) -> pd.DataFrame:
@@ -144,8 +156,7 @@ def get_gastos(desde: str = None, hasta: str = None) -> pd.DataFrame:
         q = q.gte("fecha", desde)
     if hasta:
         q = q.lte("fecha", hasta)
-    result = q.execute()
-    return pd.DataFrame(result.data)
+    return pd.DataFrame(_fetch_all(q))
 
 
 def get_ingresos() -> pd.DataFrame:

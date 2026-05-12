@@ -138,18 +138,19 @@ def render():
         grp_sub = (df_f.groupby("subcategoria")["monto"].sum()
                    .reset_index().sort_values("monto", ascending=False).head(15))
         grp_sub["pct"] = grp_sub["monto"] / total * 100
+        grp_sub["monto_fmt"] = grp_sub["monto"].apply(fmt_clp)
         fig2 = px.bar(
             grp_sub.sort_values("monto"),
             x="monto", y="subcategoria",
             orientation="h",
             color="subcategoria",
             color_discrete_sequence=SUBCAT_COLORS,
-            custom_data=["pct"],
+            custom_data=["pct", "monto_fmt"],
             labels={"monto": "", "subcategoria": ""},
         )
         fig2.update_traces(
-            hovertemplate="<b>%{y}</b><br>%{customdata[0]:.1f}% del total<extra></extra>",
-            texttemplate="%{x:,.0f}",
+            hovertemplate="<b>%{y}</b><br>%{customdata[1]}<br>%{customdata[0]:.1f}% del total<extra></extra>",
+            texttemplate="%{customdata[1]}",
             textposition="outside",
         )
         fig2.update_layout(
@@ -180,6 +181,8 @@ def render():
     total_por_mes = df_f.groupby("mes")["monto"].sum().rename("total_mes")
     grp_mes_sub = grp_mes_sub.merge(total_por_mes, on="mes")
     grp_mes_sub["pct_mes"] = grp_mes_sub["monto"] / grp_mes_sub["total_mes"] * 100
+    grp_mes_sub["monto_fmt"] = grp_mes_sub["monto"].apply(fmt_clp)
+    grp_mes_sub["total_mes_fmt"] = grp_mes_sub["total_mes"].apply(fmt_clp)
 
     # Ordenar subcategorías por total descendente para colores consistentes
     orden_subs = (grp_mes_sub.groupby("subcategoria")["monto"]
@@ -193,16 +196,16 @@ def render():
         barmode="stack",
         category_orders={"subcategoria": orden_subs},
         color_discrete_sequence=SUBCAT_COLORS,
-        custom_data=["subcategoria", "pct_mes", "total_mes"],
+        custom_data=["subcategoria", "pct_mes", "total_mes_fmt", "monto_fmt"],
         labels={"mes": "", "monto": "CLP", "subcategoria": ""},
     )
     fig3.update_traces(
         hovertemplate=(
             "<b>%{x}</b><br>"
             "%{customdata[0]}<br>"
-            "Monto: $%{y:,.0f}<br>"
+            "Monto: %{customdata[3]}<br>"
             "%{customdata[1]:.1f}% del período<br>"
-            "Total mes: $%{customdata[2]:,.0f}"
+            "Total mes: %{customdata[2]}"
             "<extra></extra>"
         )
     )

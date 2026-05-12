@@ -50,6 +50,10 @@ REGLAS = [
     # ── 4. FIXED COSTS ───────────────────────────────────
 
     # Pago Tarjeta de Crédito
+    (r"MONTO CANCELADO|MONTO PAGADO|PAGO MINIMO|ABONO TARJETA",
+     "Fixed Costs", "Pago TC"),
+    (r"TRASPASO A DEUDA NACIONAL|DEUDA NACIONAL|CARGO DEUDA NACIONAL",
+     "Fixed Costs", "Pago TC"),
     (r"\d{1,2}/\d{2}/\d{4}\s+BANCO|\bBANCO\b.*\d{4}",
      "Fixed Costs", "Pago TC"),
     (r"PAGO TARJETA|PAG\.? ?TC\b|PAG CRED|PAGO CRED|PAGO MENSUAL TARJ",
@@ -58,6 +62,8 @@ REGLAS = [
      "Fixed Costs", "Pago TC"),
 
     # Comisiones bancarias
+    (r"NOTA DE CREDITO|NOTA CREDITO|N/C\b",
+     "Fixed Costs", "Comisiones"),
     (r"INTERES\b|INTERESES\b|COMISION\b|COMISIONES\b",
      "Fixed Costs", "Comisiones"),
     (r"MANTENCI[OÓ]N|MANTENCION|CUOTA MANEJO|CARGO ANUAL|COBRO SERVICIO",
@@ -84,7 +90,7 @@ REGLAS = [
     # Servicios básicos
     (r"ENEL\b|CHILECTRA|CGE\b|LUZ\b|ELECTRICIDAD|AGUAS\b|ESVAL|ESSBIO|EMOS\b|SMAPA|AGUA POTABLE",
      "Fixed Costs", "Servicios"),
-    (r"ENTEL\b|CLARO\b|MOVISTAR|WOM\b|VTR\b|GTD\b|TELMEX|INTERNET|TELEFON|FIBRA\b|CABLE\b",
+    (r"ENTEL\b|CLARO\b|MOVISTAR|WOM\b|VTR\b|GTD\b|TELMEX|INTERNET|TELEFON|FIBRA\b|CABLE\b|MP \*ENTELHOGAR|ENTELHOGAR",
      "Fixed Costs", "Servicios"),
     (r"METROGAS|ABASTIBLE|LIPIGAS|GASCO\b|GAS NATURAL|GNLD|GLP\b",
      "Fixed Costs", "Servicios"),
@@ -180,6 +186,8 @@ REGLAS = [
      "Fixed Costs", "Transporte"),
     (r"EXPRESS CASTRO|EXPRESS.*MAITENCILLO",
      "Fixed Costs", "Transporte"),
+    (r"PASAJEBUS|PASAJE BUS|COMPRA.*PASAJE|PASAJE.*BUS",
+     "Fixed Costs", "Transporte"),
 
     # ── 5. GUILT FREE ────────────────────────────────────
 
@@ -204,6 +212,8 @@ REGLAS = [
      "Guilt Free", "Restoran/Social"),
     (r"NENAZO|BAR MANIO|BAR DE RIO|SOCIAL BAR|SUBLIME SANDWICH|GREEN PIZZA|EL INTERNADO",
      "Guilt Free", "Restoran/Social"),
+    (r"\bEL TORO\b|DA DINO|CHIRINGO\b|RESTAURANT.*CHIRINGO",
+     "Guilt Free", "Restoran/Social"),
     (r"REDELCOM.*FOOD|FOODSERVICE|FOOD SERVICE",
      "Guilt Free", "Restoran/Social"),
     (r"TEATRO\b|CINE\b|CINEMARK|CINEPOLIS|CCP\b|MOVIE|CONCIERTO|SHOW\b|ESPECTACULO|PUNTOTICKET|TICKETMASTER",
@@ -217,6 +227,12 @@ REGLAS = [
     (r"TENIS\b|PADEL\b|GOLF\b|RUNNING|BOXEO|ESCALADA|CLUB.*TENIS|TENIS.*CLUB|SANTUARI",
      "Guilt Free", "Deportes/Bienestar"),
     (r"EASYCANCHA|EASY CANCHA|CANCHA\b",
+     "Guilt Free", "Deportes/Bienestar"),
+    (r"FULLTENNIS|FULL TENNIS",
+     "Guilt Free", "Deportes/Bienestar"),
+    (r"CLUB VITACURA|VITACURA.*CLUB|JMVITACURA|JM.*VITACURA",
+     "Guilt Free", "Deportes/Bienestar"),
+    (r"NAVKA|CENTRO NAVKA|FLOW.*NAVKA",
      "Guilt Free", "Deportes/Bienestar"),
     (r"\bFIT\b.*CUOTA|TH FIT\b",
      "Guilt Free", "Deportes/Bienestar"),
@@ -248,6 +264,10 @@ REGLAS = [
      "Guilt Free", "Compras"),
     (r"IKEA\b|EASY\b|SODIMAC|HOMECENTER|CONSTRUMART|IMPERIAL\b|FERRETERIA",
      "Guilt Free", "Compras"),
+    (r"KITCHEN CENTER|MP \*KITCHEN|KITCHENCENTER",
+     "Guilt Free", "Compras"),
+    (r"INCHCAPE\b",
+     "Guilt Free", "Compras"),
     (r"APPLE\b|APPLE STORE|SAMSUNG\b|PCFACTORY|ELECTR",
      "Guilt Free", "Compras"),
     (r"MERCADOPAGO|MERPAGO|MERCADO PAGO",
@@ -271,6 +291,8 @@ REGLAS = [
     (r"VESTIMENTA|ROPA\b|CALZADO|ZAPATOS|ZAPATILLAS|OUTLET\b|MALL\b",
      "Guilt Free", "For me"),
     (r"JOYERIA|RELOJERIA|OPTIC.*MODA|BOLSO\b|CARTERA\b|ACCESORIO",
+     "Guilt Free", "For me"),
+    (r"ASICS\b",
      "Guilt Free", "For me"),
     (r"SUPERDRY|NORTH FACE|PATAGONIA\b|AMERICAN EAGLE|SAVILLE ROW|PHANTOM\b",
      "Guilt Free", "For me"),

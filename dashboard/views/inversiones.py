@@ -17,6 +17,39 @@ from dashboard.mappings import get_tipo, get_pais, get_sector
 
 USD_CLP = get_usd_clp()
 
+# ── Escala de color con contraste real (rojo-blanco-verde) ──
+HEAT_SCALE = [
+    [0.00, "#8b0000"],   # rojo oscuro   → muy negativo
+    [0.35, "#e74c3c"],   # rojo          → negativo
+    [0.50, "#e8e8e8"],   # gris claro    → 0%
+    [0.65, "#2ecc71"],   # verde         → positivo
+    [1.00, "#1a6b35"],   # verde oscuro  → muy positivo
+]
+HEAT_RANGE = [-40, 60]   # rango fijo para que 0 siempre sea gris
+
+
+@st.cache_data(ttl=14400, show_spinner=False)   # cache 4 horas
+def _fetch_metrics(tickers: tuple) -> pd.DataFrame:
+    """Obtiene P/E, EPS y Dividend Yield via yfinance para cada ticker."""
+    try:
+        import yfinance as yf
+    except ImportError:
+        return pd.DataFrame(columns=["ticker","pe","eps","div_yield"])
+
+    rows = []
+    for tk in tickers:
+        try:
+            info = yf.Ticker(tk).info
+            rows.append({
+                "ticker":    tk,
+                "pe":        info.get("trailingPE"),
+                "eps":       info.get("trailingEps"),
+                "div_yield": (info.get("dividendYield") or 0) * 100,  # → %
+            })
+        except Exception:
+            rows.append({"ticker": tk, "pe": None, "eps": None, "div_yield": None})
+    return pd.DataFrame(rows)
+
 
 def _enrich(df):
     df = df.copy()
@@ -43,11 +76,12 @@ def render():
     df_cartera  = load_cartera()
     df_racional = load_racional()
 
-    tab1, tab2, tab3, tab4 = st.tabs([
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
         "📋 Consolidado",
         "🇨🇱 Acciones Chile",
         "🌎 Internacional",
         "📊 Historial Racional",
+        "🔬 Fundamentos",
     ])
 
     # ────────────────────────────────────────────────────────
@@ -106,8 +140,9 @@ def render():
                 path=["tipo", "ticker"],
                 values="valor_clp",
                 color="retorno_pct",
-                color_continuous_scale=["#e74c3c", "#f39c12", "#2ecc71"],
+                color_continuous_scale=HEAT_SCALE,
                 color_continuous_midpoint=0,
+                range_color=HEAT_RANGE,
                 custom_data=["empresa", "ganancia_clp"],
             )
             fig.update_traces(
@@ -319,7 +354,7 @@ def render():
                 section_title(f"Detalle ({len(df_i)} posiciones)")
                 df_i = df_i.sort_values("valor_clp", ascending=False)
                 tbl = df_i[["ticker","empresa","tipo","pais","cantidad","precio_actual","valor_usd","valor_clp","ganancia_clp","retorno_pct"]].copy()
-                tbl["precio_actual"] = tbl.apply(lambda r: f"${r['precio_actual']:,.2f}", axis=1)
+                tbl["precio_actual"] = tbl["precio_actual"].apply(lambda x: fmt_usd(x, 2))
                 tbl["valor_usd"]     = tbl["valor_usd"].apply(lambda x: fmt_usd(x,0))
                 tbl["valor_clp"]     = tbl["valor_clp"].apply(fmt_clp)
                 tbl["ganancia_clp"]  = tbl["ganancia_clp"].apply(fmt_clp)
@@ -407,3 +442,96 @@ def render():
             if "precio_usd" in tbl.columns: tbl["precio_usd"] = pd.to_numeric(tbl["precio_usd"], errors="coerce").apply(lambda x: fmt_usd(x,2) if pd.notna(x) else "-")
             tbl.columns = [c.replace("_"," ").title() for c in tbl.columns]
             st.dataframe(tbl, hide_index=True, use_container_width=True)
+
+    # ────────────────────────────────────────────────────────
+    # TAB 5: FUNDAMENTOS
+    # ────────────────────────────────────────────────────────
+    with tab5:
+        if df_cartera.empty:
+            st.info("Sin datos.")
+        else:
+            df = _enrich(df_cartera)
+
+            # Filtros
+            col_f1, col_f2 = st.columns(2)
+            with col_f1:
+                tipos = ["Todos"] + sorted(df["tipo"].dropna().unique().tolist())
+                tipo_sel = st.selectbox("Tipo", tipos, key="fund_tipo")
+            with col_f2:
+                paises = ["Todos"] + sorted(df["pais"].dropna().unique().tolist())
+                pais_sel = st.selectbox("País", paises, key="fund_pais")
+
+            df_f = df.copy()
+            if tipo_sel  != "Todos": df_f = df_f[df_f["tipo"] == tipo_sel]
+            if pais_sel  != "Todos": df_f = df_f[df_f["pais"] == pais_sel]
+
+            tickers = tuple(sorted(df_f["ticker"].dropna().unique().tolist()))
+
+            with st.spinner(f"Cargando métricas para {len(tickers)} tickers…"):
+                metrics = _fetch_metrics(tickers)
+
+            if metrics.empty:
+                st.warning("No se pudieron cargar métricas. Verifica conexión a internet.")
+            else:
+                # Combinar con datos de cartera
+                df_m = df_f.merge(metrics, on="ticker", how="left")
+
+                # ── Promedios ponderados por valor ────────────
+                st.divider()
+                section_title("Promedios ponderados por valor de cartera")
+
+                total_val = df_m["valor_clp"].sum()
+                df_m["_w"] = df_m["valor_clp"] / total_val if total_val else 0
+
+                def wavg(col):
+                    sub = df_m[df_m[col].notna()]
+                    if sub.empty: return None
+                    w = sub["valor_clp"] / sub["valor_clp"].sum()
+                    return (sub[col] * w).sum()
+
+                avg_pe       = wavg("pe")
+                avg_eps      = wavg("eps")
+                avg_div      = wavg("div_yield")
+
+                c1, c2, c3 = st.columns(3)
+                with c1:
+                    st.metric(
+                        "P/E promedio ponderado",
+                        f"{avg_pe:.1f}x" if avg_pe else "—",
+                        help="Price/Earnings: cuántas veces estás pagando las ganancias. <15 barato, >25 caro."
+                    )
+                with c2:
+                    st.metric(
+                        "EPS promedio ponderado",
+                        f"{avg_eps:.2f}" if avg_eps else "—",
+                        help="Earnings Per Share: ganancia neta por acción (moneda local)."
+                    )
+                with c3:
+                    st.metric(
+                        "Dividend Yield promedio",
+                        f"{avg_div:.2f}%" if avg_div is not None else "—",
+                        help="Rendimiento por dividendos anual sobre el precio actual."
+                    )
+
+                # ── Tabla detalle por ticker ──────────────────
+                st.divider()
+                section_title("Detalle por ticker")
+
+                tbl = df_m[[
+                    "ticker", "empresa", "tipo", "pais",
+                    "valor_clp", "retorno_pct",
+                    "pe", "eps", "div_yield"
+                ]].copy().sort_values("valor_clp", ascending=False)
+
+                tbl["valor_clp"]  = tbl["valor_clp"].apply(fmt_clp)
+                tbl["retorno_pct"]= tbl["retorno_pct"].apply(fmt_pct)
+                tbl["pe"]         = tbl["pe"].apply(lambda x: f"{x:.1f}x" if pd.notna(x) else "—")
+                tbl["eps"]        = tbl["eps"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "—")
+                tbl["div_yield"]  = tbl["div_yield"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
+
+                tbl.columns = ["Ticker", "Empresa", "Tipo", "País",
+                               "Valor CLP", "Retorno %",
+                               "P/E", "EPS", "Div Yield"]
+                st.dataframe(tbl, hide_index=True, use_container_width=True)
+
+                st.caption("📡 Datos de mercado vía Yahoo Finance · Caché 4 horas · P/E y EPS trailing (últimos 12 meses)")
