@@ -29,25 +29,30 @@ HEAT_RANGE = [-40, 60]   # rango fijo para que 0 siempre sea gris
 
 
 @st.cache_data(ttl=14400, show_spinner=False)   # cache 4 horas
-def _fetch_metrics(tickers: tuple) -> pd.DataFrame:
-    """Obtiene P/E, EPS y Dividend Yield via yfinance para cada ticker."""
+def _fetch_metrics(yf_tickers: tuple) -> pd.DataFrame:
+    """
+    Obtiene P/E, EPS y Dividend Yield via yfinance.
+    yf_tickers: en formato yfinance (e.g. BCI.SN para Santiago, VT para NYSE).
+    Retorna DataFrame con 'ticker' en formato original (sin sufijo .SN).
+    """
     try:
         import yfinance as yf
     except ImportError:
         return pd.DataFrame(columns=["ticker","pe","eps","div_yield"])
 
     rows = []
-    for tk in tickers:
+    for tk in yf_tickers:
+        tk_key = tk[:-3] if tk.endswith(".SN") else tk   # clave original sin sufijo
         try:
             info = yf.Ticker(tk).info
             rows.append({
-                "ticker":    tk,
+                "ticker":    tk_key,
                 "pe":        info.get("trailingPE"),
                 "eps":       info.get("trailingEps"),
-                "div_yield": (info.get("dividendYield") or 0) * 100,  # → %
+                "div_yield": (info.get("dividendYield") or 0) * 100,
             })
         except Exception:
-            rows.append({"ticker": tk, "pe": None, "eps": None, "div_yield": None})
+            rows.append({"ticker": tk_key, "pe": None, "eps": None, "div_yield": None})
     return pd.DataFrame(rows)
 
 
@@ -461,27 +466,38 @@ def render():
                 paises = ["Todos"] + sorted(df["pais"].dropna().unique().tolist())
                 pais_sel = st.selectbox("País", paises, key="fund_pais")
 
+            # Filtro adicional: sector
+            with st.columns(1)[0]:
+                sectores = ["Todos"] + sorted(df["sector"].dropna().unique().tolist())
+                sector_sel = st.selectbox("Sector / Industria", sectores, key="fund_sector")
+
             df_f = df.copy()
-            if tipo_sel  != "Todos": df_f = df_f[df_f["tipo"] == tipo_sel]
-            if pais_sel  != "Todos": df_f = df_f[df_f["pais"] == pais_sel]
+            if tipo_sel   != "Todos": df_f = df_f[df_f["tipo"]   == tipo_sel]
+            if pais_sel   != "Todos": df_f = df_f[df_f["pais"]   == pais_sel]
+            if sector_sel != "Todos": df_f = df_f[df_f["sector"] == sector_sel]
 
-            tickers = tuple(sorted(df_f["ticker"].dropna().unique().tolist()))
+            # ── Tickers en formato yfinance ──────────────────
+            # Acciones chilenas necesitan sufijo .SN (Bolsa de Santiago)
+            yf_map = {
+                row["ticker"]: (f"{row['ticker']}.SN" if row.get("mercado") == "nacional" else row["ticker"])
+                for _, row in df_f.drop_duplicates("ticker").iterrows()
+                if pd.notna(row["ticker"])
+            }
+            yf_tickers = tuple(sorted(set(yf_map.values())))
 
-            with st.spinner(f"Cargando métricas para {len(tickers)} tickers…"):
-                metrics = _fetch_metrics(tickers)
+            with st.spinner(f"Cargando métricas para {len(yf_tickers)} tickers…"):
+                metrics = _fetch_metrics(yf_tickers)
 
             if metrics.empty:
                 st.warning("No se pudieron cargar métricas. Verifica conexión a internet.")
             else:
-                # Combinar con datos de cartera
                 df_m = df_f.merge(metrics, on="ticker", how="left")
 
-                # ── Promedios ponderados por valor ────────────
+                # ── KPIs ponderados ───────────────────────────
                 st.divider()
                 section_title("Promedios ponderados por valor de cartera")
 
                 total_val = df_m["valor_clp"].sum()
-                df_m["_w"] = df_m["valor_clp"] / total_val if total_val else 0
 
                 def wavg(col):
                     sub = df_m[df_m[col].notna()]
@@ -489,49 +505,137 @@ def render():
                     w = sub["valor_clp"] / sub["valor_clp"].sum()
                     return (sub[col] * w).sum()
 
-                avg_pe       = wavg("pe")
-                avg_eps      = wavg("eps")
-                avg_div      = wavg("div_yield")
+                avg_pe  = wavg("pe")
+                avg_eps = wavg("eps")
+                avg_div = wavg("div_yield")
 
                 c1, c2, c3 = st.columns(3)
                 with c1:
-                    st.metric(
-                        "P/E promedio ponderado",
-                        f"{avg_pe:.1f}x" if avg_pe else "—",
-                        help="Price/Earnings: cuántas veces estás pagando las ganancias. <15 barato, >25 caro."
-                    )
+                    st.metric("P/E promedio ponderado",
+                              f"{avg_pe:.1f}x" if avg_pe else "—",
+                              help="<15 barato · 15–25 normal · >25 caro")
                 with c2:
-                    st.metric(
-                        "EPS promedio ponderado",
-                        f"{avg_eps:.2f}" if avg_eps else "—",
-                        help="Earnings Per Share: ganancia neta por acción (moneda local)."
-                    )
+                    st.metric("EPS promedio ponderado",
+                              f"{avg_eps:.2f}" if avg_eps else "—",
+                              help="Earnings Per Share trailing 12m (moneda local del activo)")
                 with c3:
-                    st.metric(
-                        "Dividend Yield promedio",
-                        f"{avg_div:.2f}%" if avg_div is not None else "—",
-                        help="Rendimiento por dividendos anual sobre el precio actual."
-                    )
+                    st.metric("Dividend Yield promedio",
+                              f"{avg_div:.2f}%" if avg_div is not None else "—",
+                              help="Rendimiento por dividendos anual sobre precio actual")
 
-                # ── Tabla detalle por ticker ──────────────────
                 st.divider()
+
+                # ── Gráfico burbuja: P/E vs EPS ───────────────
+                section_title("Mapa de valoración: P/E vs EPS")
+                st.caption("Cuadrante ideal → P/E bajo + EPS alto = acción subvalorada con buenas ganancias. Tamaño de burbuja = valor en cartera.")
+
+                df_bub = df_m[df_m["pe"].notna() & df_m["eps"].notna()].copy()
+
+                if not df_bub.empty:
+                    df_bub["hover_txt"] = df_bub.apply(
+                        lambda r: (
+                            f"<b>{r['ticker']}</b> — {r.get('empresa','')}<br>"
+                            f"Tipo: {r['tipo']} | Sector: {r['sector']}<br>"
+                            f"P/E: {r['pe']:.1f}x | EPS: {r['eps']:.2f}<br>"
+                            f"Div Yield: {r['div_yield']:.2f}%<br>"
+                            f"Valor cartera: {fmt_clp(r['valor_clp'])}"
+                        ), axis=1
+                    )
+                    fig_bub = px.scatter(
+                        df_bub,
+                        x="pe", y="eps",
+                        size="valor_clp", size_max=60,
+                        color="sector",
+                        text="ticker",
+                        color_discrete_sequence=ASSET_COLORS,
+                        labels={"pe": "P/E Ratio", "eps": "EPS (moneda local)", "sector": "Sector"},
+                        custom_data=["hover_txt"],
+                    )
+                    fig_bub.update_traces(
+                        hovertemplate="%{customdata[0]}<extra></extra>",
+                        textposition="top center",
+                        textfont=dict(size=9),
+                    )
+                    fig_bub.add_vline(x=15, line_dash="dot", line_color="#2ecc71",
+                                      annotation_text="P/E 15 (barato)", annotation_position="top right",
+                                      annotation_font_color="#2ecc71")
+                    fig_bub.add_vline(x=25, line_dash="dot", line_color="#e74c3c",
+                                      annotation_text="P/E 25 (caro)", annotation_position="top right",
+                                      annotation_font_color="#e74c3c")
+                    fig_bub.add_hline(y=0, line_color="#888", line_width=1)
+                    fig_bub.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#ccd6f6",
+                        margin=dict(t=20, b=10, l=10, r=10), height=460,
+                        xaxis=dict(gridcolor="#2d3250", title="P/E Ratio  (← más barato)"),
+                        yaxis=dict(gridcolor="#2d3250", title="EPS  (más rentable →)"),
+                        legend=dict(orientation="v", x=1.01),
+                    )
+                    st.plotly_chart(fig_bub, use_container_width=True)
+                else:
+                    st.info("No hay suficientes datos P/E + EPS para este filtro.")
+
+                st.divider()
+
+                # ── Barra P/E comparativo ─────────────────────
+                section_title("Comparativo P/E por posición")
+
+                df_pe = df_m[df_m["pe"].notna()].sort_values("pe").copy()
+                if not df_pe.empty:
+                    df_pe["color_pe"] = df_pe["pe"].apply(
+                        lambda x: "#2ecc71" if x < 15 else ("#f39c12" if x < 25 else "#e74c3c")
+                    )
+                    df_pe["hover_pe"] = df_pe.apply(
+                        lambda r: (
+                            f"<b>{r['ticker']}</b><br>"
+                            f"P/E: {r['pe']:.1f}x | EPS: {r['eps']:.2f if pd.notna(r['eps']) else '—'}<br>"
+                            f"Div Yield: {r['div_yield']:.2f}%<br>"
+                            f"Valor: {fmt_clp(r['valor_clp'])}"
+                        ), axis=1
+                    )
+                    fig_pe = go.Figure(go.Bar(
+                        x=df_pe["pe"], y=df_pe["ticker"],
+                        orientation="h",
+                        marker_color=df_pe["color_pe"],
+                        text=df_pe["pe"].apply(lambda x: f"{x:.1f}x"),
+                        textposition="outside",
+                        customdata=df_pe[["hover_pe"]].values,
+                        hovertemplate="%{customdata[0]}<extra></extra>",
+                    ))
+                    fig_pe.add_vline(x=15, line_dash="dot", line_color="#2ecc71",
+                                     annotation_text="15x", annotation_font_color="#2ecc71")
+                    fig_pe.add_vline(x=25, line_dash="dot", line_color="#e74c3c",
+                                     annotation_text="25x", annotation_font_color="#e74c3c")
+                    fig_pe.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#ccd6f6",
+                        margin=dict(t=20, b=10, l=10, r=60),
+                        height=max(300, len(df_pe) * 28),
+                        xaxis=dict(gridcolor="#2d3250", title="P/E Ratio"),
+                        yaxis=dict(showgrid=False),
+                        showlegend=False,
+                    )
+                    st.plotly_chart(fig_pe, use_container_width=True)
+                    st.caption("🟢 P/E < 15 (barato) · 🟡 15–25 (normal) · 🔴 > 25 (caro)")
+
+                st.divider()
+
+                # ── Tabla detalle ─────────────────────────────
                 section_title("Detalle por ticker")
 
                 tbl = df_m[[
-                    "ticker", "empresa", "tipo", "pais",
-                    "valor_clp", "retorno_pct",
-                    "pe", "eps", "div_yield"
+                    "ticker", "empresa", "tipo", "pais", "sector",
+                    "valor_clp", "retorno_pct", "pe", "eps", "div_yield"
                 ]].copy().sort_values("valor_clp", ascending=False)
 
-                tbl["valor_clp"]  = tbl["valor_clp"].apply(fmt_clp)
-                tbl["retorno_pct"]= tbl["retorno_pct"].apply(fmt_pct)
-                tbl["pe"]         = tbl["pe"].apply(lambda x: f"{x:.1f}x" if pd.notna(x) else "—")
-                tbl["eps"]        = tbl["eps"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "—")
-                tbl["div_yield"]  = tbl["div_yield"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
+                tbl["valor_clp"]   = tbl["valor_clp"].apply(fmt_clp)
+                tbl["retorno_pct"] = tbl["retorno_pct"].apply(fmt_pct)
+                tbl["pe"]          = tbl["pe"].apply(lambda x: f"{x:.1f}x" if pd.notna(x) else "—")
+                tbl["eps"]         = tbl["eps"].apply(lambda x: f"{x:.2f}" if pd.notna(x) else "—")
+                tbl["div_yield"]   = tbl["div_yield"].apply(lambda x: f"{x:.2f}%" if pd.notna(x) else "—")
 
-                tbl.columns = ["Ticker", "Empresa", "Tipo", "País",
-                               "Valor CLP", "Retorno %",
-                               "P/E", "EPS", "Div Yield"]
+                tbl.columns = ["Ticker", "Empresa", "Tipo", "País", "Sector",
+                               "Valor CLP", "Retorno %", "P/E", "EPS", "Div Yield"]
                 st.dataframe(tbl, hide_index=True, use_container_width=True)
 
-                st.caption("📡 Datos de mercado vía Yahoo Finance · Caché 4 horas · P/E y EPS trailing (últimos 12 meses)")
+                st.caption("📡 Datos vía Yahoo Finance · Caché 4h · Trailing 12m · Acciones Chile: sufijo .SN (Bolsa de Santiago)")

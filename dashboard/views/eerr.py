@@ -113,21 +113,45 @@ def render():
 
     # ── Gráfico de cascada mensual ────────────────────────
     section_title("Flujo mensual")
+
+    # Pre-formatear en CLP para hover
+    _ing_f = df_eerr["Ingresos"].apply(fmt_clp)
+    _gas_f = df_eerr["Gastos"].apply(fmt_clp)
+    _inv_f = df_eerr["Inversiones"].apply(fmt_clp)
+    _res_f = df_eerr["Resultado Operacional"].apply(fmt_clp)
+
     fig = go.Figure()
-    fig.add_trace(go.Bar(x=df_eerr["Mes"], y=df_eerr["Ingresos"],    name="Ingresos",     marker_color="#2ecc71"))
-    fig.add_trace(go.Bar(x=df_eerr["Mes"], y=-df_eerr["Gastos"],     name="Gastos",       marker_color="#e74c3c"))
-    fig.add_trace(go.Bar(x=df_eerr["Mes"], y=-df_eerr["Inversiones"],name="Inversiones",  marker_color="#4e79a7"))
+    fig.add_trace(go.Bar(
+        x=df_eerr["Mes"], y=df_eerr["Ingresos"],
+        name="Ingresos", marker_color="#2ecc71",
+        customdata=_ing_f,
+        hovertemplate="<b>%{x}</b><br>Ingresos: %{customdata}<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        x=df_eerr["Mes"], y=-df_eerr["Gastos"],
+        name="Gastos", marker_color="#e74c3c",
+        customdata=_gas_f,
+        hovertemplate="<b>%{x}</b><br>Gastos: %{customdata}<extra></extra>",
+    ))
+    fig.add_trace(go.Bar(
+        x=df_eerr["Mes"], y=-df_eerr["Inversiones"],
+        name="Inversiones", marker_color="#4e79a7",
+        customdata=_inv_f,
+        hovertemplate="<b>%{x}</b><br>Inversiones: %{customdata}<extra></extra>",
+    ))
     fig.add_trace(go.Scatter(
         x=df_eerr["Mes"], y=df_eerr["Resultado Operacional"],
         name="Resultado", mode="lines+markers",
         line=dict(color="#f39c12", width=2), marker=dict(size=7),
+        customdata=_res_f,
+        hovertemplate="<b>%{x}</b><br>Resultado: %{customdata}<extra></extra>",
     ))
     fig.update_layout(
         barmode="relative",
         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
         font_color="#ccd6f6",
         margin=dict(t=10, b=10, l=10, r=10), height=380,
-        xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#2d3250"),
+        xaxis=dict(showgrid=False), yaxis=dict(gridcolor="#2d3250", tickformat=",.0f"),
         legend=dict(orientation="h", y=1.1),
     )
     st.plotly_chart(fig, use_container_width=True)
@@ -135,9 +159,21 @@ def render():
     # ── Gráfico de tasas ──────────────────────────────────
     section_title("Distribución del ingreso por mes (%)")
     fig2 = go.Figure()
-    fig2.add_trace(go.Bar(x=df_eerr["Mes"], y=df_eerr["Tasa Gasto %"],      name="% Gasto",      marker_color="#e74c3c", opacity=0.8))
-    fig2.add_trace(go.Bar(x=df_eerr["Mes"], y=df_eerr["Tasa Inversión %"], name="% Inversión",   marker_color="#4e79a7", opacity=0.8))
-    fig2.add_trace(go.Bar(x=df_eerr["Mes"], y=df_eerr["Tasa Ahorro %"],    name="% Ahorro neto", marker_color="#2ecc71", opacity=0.8))
+    fig2.add_trace(go.Bar(
+        x=df_eerr["Mes"], y=df_eerr["Tasa Gasto %"],
+        name="% Gasto", marker_color="#e74c3c", opacity=0.8,
+        hovertemplate="<b>%{x}</b><br>Gasto: %{y:.1f}% del ingreso<extra></extra>",
+    ))
+    fig2.add_trace(go.Bar(
+        x=df_eerr["Mes"], y=df_eerr["Tasa Inversión %"],
+        name="% Inversión", marker_color="#4e79a7", opacity=0.8,
+        hovertemplate="<b>%{x}</b><br>Inversión: %{y:.1f}% del ingreso<extra></extra>",
+    ))
+    fig2.add_trace(go.Bar(
+        x=df_eerr["Mes"], y=df_eerr["Tasa Ahorro %"],
+        name="% Ahorro neto", marker_color="#2ecc71", opacity=0.8,
+        hovertemplate="<b>%{x}</b><br>Ahorro neto: %{y:.1f}% del ingreso<extra></extra>",
+    ))
     fig2.add_hline(y=0, line_color="#888", line_width=1)
     fig2.update_layout(
         barmode="relative",
