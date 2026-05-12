@@ -30,3 +30,4 @@ plotly>=5.22.0             # gráficos interactivos
 python-dotenv>=1.0.1       # leer .env
 pyyaml>=6.0.1              # leer email_sources.yaml
 requests>=2.32.0
+yfinance>=0.2.40
