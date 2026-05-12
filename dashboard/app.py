@@ -30,9 +30,44 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
-# ── Importar utils (estilos) ──────────────────────────────
-from dashboard.utils import apply_global_styles, render_eye_toggle
+# ── Importar utils (estilos) — reload para evitar caché de warm deploy ──
+import importlib
+
+# Forzar recarga de módulos clave para evitar versiones antiguas en warm deploys
+for _mod_name in [
+    "dashboard.utils",
+    "dashboard.categorias",
+    "dashboard.mappings",
+]:
+    try:
+        import importlib, sys
+        if _mod_name in sys.modules:
+            importlib.reload(sys.modules[_mod_name])
+    except Exception:
+        pass
+
+from dashboard.utils import apply_global_styles
 apply_global_styles()
+
+
+def _render_eye_toggle():
+    """Toggle inline en app.py para evitar problema de módulo cacheado en warm deploy."""
+    if "hide_amounts" not in st.session_state:
+        st.session_state.hide_amounts = False
+    label = "🙈 Ocultar montos" if not st.session_state.hide_amounts else "👁 Mostrar montos"
+    if st.button(label, use_container_width=True, key="toggle_hide_amounts"):
+        st.session_state.hide_amounts = not st.session_state.hide_amounts
+        st.rerun()
+
+
+def _render_eye_toggle():
+    """Toggle inline en app.py para evitar problema de módulo cacheado en warm deploy."""
+    if "hide_amounts" not in st.session_state:
+        st.session_state.hide_amounts = False
+    label = "🙈 Ocultar montos" if not st.session_state.hide_amounts else "👁 Mostrar montos"
+    if st.button(label, use_container_width=True, key="toggle_hide_amounts"):
+        st.session_state.hide_amounts = not st.session_state.hide_amounts
+        st.rerun()
 
 # ── Password protection ───────────────────────────────────
 DASHBOARD_PASSWORD = os.getenv("DASHBOARD_PASSWORD", "")
@@ -88,7 +123,7 @@ with st.sidebar:
     st.markdown("---")
 
     # Toggle privacidad: ocultar/mostrar montos
-    render_eye_toggle()
+    _render_eye_toggle()
 
     st.markdown("---")
 
