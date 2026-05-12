@@ -49,23 +49,35 @@ Tablas principales:
 
 ## ⚠️ REGLAS CRÍTICAS — NO OLVIDAR
 
-### Paginación Supabase
-Supabase tiene un límite de 1000 filas por query. SIEMPRE usar `_fetch_all()`:
+### Paginación Supabase — CRÍTICO
+Supabase tiene un límite de 1000 filas por query. Se necesita paginación.
+
+**PROBLEMA IMPORTANTE**: Streamlit Cloud usa "warm deployments" — el proceso Python
+NO se reinicia, entonces `sys.modules` puede tener versiones ANTIGUAS de módulos
+importados. Nunca usar `from database.supabase_client import _fetch_all` en funciones
+cacheadas, porque puede ejecutar la versión antigua sin paginación.
+
+**SOLUCIÓN**: La paginación está INLINE en `utils.py` con `importlib.reload()`:
 ```python
-def _fetch_all(query, page_size: int = 1000) -> list:
-    all_data = []
-    page = 0
+def _get_sb():
+    import importlib
+    import database.supabase_client as _sc
+    importlib.reload(_sc)  # fuerza recarga del módulo
+    return _sc.get_client()
+
+def _fetch_all_pages(table, order_col="fecha", page_size=1000):
+    sb = _get_sb()
+    q = sb.table(table).select("*").order(order_col, desc=True)
+    all_data, page = [], 0
     while True:
-        start = page * page_size
-        result = query.range(start, start + page_size - 1).execute()
-        all_data.extend(result.data)
-        if len(result.data) < page_size:
-            break
+        r = q.range(page * page_size, page * page_size + page_size - 1).execute()
+        all_data.extend(r.data)
+        if len(r.data) < page_size: break
         page += 1
     return all_data
 ```
-Aplica a: `get_gastos`, `get_racional_transacciones`, `get_buda_crypto`.
-SIN esto, el dashboard solo muestra ~11 meses de datos en vez de 2019–2026.
+SIN esto, el dashboard muestra solo ~11 meses de datos (1000 filas más recientes).
+Tablas que requieren paginación: `santander_gastos` (7539 filas), `racional_transacciones`, `buda_crypto`.
 
 ### Formato moneda: SIEMPRE usar fmt_clp()
 - Pesos chilenos: `fmt_clp(v)` → `$1.234.567` (puntos como miles, sin decimales)
@@ -152,12 +164,19 @@ df_gastos = df[
 
 ## Heatmaps en inversiones
 ```python
+# IMPORTANTE: el gris (0%) mapea a posición 0.40 en el rango [-40,60]
+# porque (0 - (-40)) / (60 - (-40)) = 40/100 = 0.40
+# Si el gris está en 0.50, los tickers con 0% aparecen rojo → INCORRECTO
 HEAT_SCALE = [
-    [0.00, "#8b0000"], [0.35, "#e74c3c"],
-    [0.50, "#e8e8e8"], [0.65, "#2ecc71"], [1.00, "#1a6b35"],
+    [0.00, "#8b0000"],   # -40%
+    [0.25, "#e74c3c"],   # -10%
+    [0.40, "#e8e8e8"],   #   0% ← debe coincidir con (0-min)/(max-min)
+    [0.58, "#2ecc71"],   # +11%
+    [1.00, "#1a6b35"],   # +60%
 ]
-HEAT_RANGE = [-40, 60]  # 0% siempre en gris
+HEAT_RANGE = [-40, 60]
 ```
+Si cambias HEAT_RANGE, recalcula la posición del gris: `pos_gris = (0 - min) / (max - min)`
 
 ## Tab Fundamentos (inversiones.py)
 - Filtros: Tipo, País, Sector/Industria
