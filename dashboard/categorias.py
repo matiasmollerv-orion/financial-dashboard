@@ -136,6 +136,11 @@ REGLAS = [
      "Fixed Costs", "Salud"),
 
     # Supermercado / Almacén
+    # ⚠️ IMPORTANTE: MERCADO LIBRE y MERCADO PAGO deben ir ANTES de MERCADO\b para no ser mal-categorizados
+    (r"MERCADO LIBRE|MERCADOLIBRE|MELI\b",
+     "Guilt Free", "Compras"),
+    (r"MERCADO PAGO|MERCADOPAGO|MERPAGO\b",
+     "Guilt Free", "Compras"),
     (r"JUMBO\b|UNIMARC|SANTA ISABEL|TOTTUS|EKONO|MAYORISTA 10|CENTRAL MAYORISTA",
      "Fixed Costs", "Supermercado"),
     (r"LIDER\b|LIDER\.CL|WALMART",
@@ -260,7 +265,7 @@ REGLAS = [
      "Guilt Free", "Viajes"),
 
     # Compras / Retail
-    (r"AMAZON\b|ALIEXPRESS|EBAY\b|SHEIN\b|TEMU\b|MERCADOLIBRE|FALABELLA|RIPLEY|PARIS\b|LA POLAR|CORONA\b|HITES\b",
+    (r"AMAZON\b|ALIEXPRESS|EBAY\b|SHEIN\b|TEMU\b|FALABELLA|RIPLEY|PARIS\b|LA POLAR|CORONA\b|HITES\b",
      "Guilt Free", "Compras"),
     (r"ABCDIN|TRICOT|SPORTEX|LINIO\b",
      "Guilt Free", "Compras"),
@@ -272,8 +277,7 @@ REGLAS = [
      "Guilt Free", "Compras"),
     (r"APPLE\b|APPLE STORE|SAMSUNG\b|PCFACTORY|ELECTR",
      "Guilt Free", "Compras"),
-    (r"MERCADOPAGO|MERPAGO|MERCADO PAGO",
-     "Guilt Free", "Compras"),
+    # (MERCADOPAGO / MERPAGO / MERCADO PAGO ya están definidos antes del MERCADO\b de supermercado)
     (r"FPAY\b",
      "Guilt Free", "Compras"),
     (r"CHEK\b|CONECTA2\b",

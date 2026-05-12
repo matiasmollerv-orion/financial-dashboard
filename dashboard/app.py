@@ -31,7 +31,7 @@ st.set_page_config(
 )
 
 # ── Importar utils (estilos) ──────────────────────────────
-from dashboard.utils import apply_global_styles
+from dashboard.utils import apply_global_styles, render_eye_toggle
 apply_global_styles()
 
 # ── Password protection ───────────────────────────────────
@@ -84,6 +84,11 @@ with st.sidebar:
         ],
         label_visibility="collapsed",
     )
+
+    st.markdown("---")
+
+    # Toggle privacidad: ocultar/mostrar montos
+    render_eye_toggle()
 
     st.markdown("---")
 

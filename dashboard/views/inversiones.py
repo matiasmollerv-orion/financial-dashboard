@@ -10,6 +10,7 @@ import streamlit as st
 
 from dashboard.utils import (
     fmt_clp, fmt_usd, fmt_pct,
+    fmt_clp_safe, fmt_usd_safe, metric_safe, amounts_hidden,
     section_title, ASSET_COLORS,
     load_cartera, load_racional, load_buda, get_usd_clp,
 )
@@ -26,6 +27,34 @@ HEAT_SCALE = [
     [1.00, "#1a6b35"],   # +60% → verde oscuro
 ]
 HEAT_RANGE = [-40, 60]   # 0% ↔ posición 40/100 = 0.40 en la escala
+
+
+@st.cache_data(ttl=3600, show_spinner=False)
+def _fetch_price_history(yf_tickers: tuple, lookback: str = "1y") -> pd.DataFrame:
+    """
+    Descarga histórico de precios ajustados (Close) para los tickers dados.
+    yf_tickers debe estar en formato yfinance (con .SN para Chile).
+    Retorna DataFrame con columnas = tickers yf, index = fecha.
+    """
+    try:
+        import yfinance as yf
+        tks = list(yf_tickers)
+        raw = yf.download(tks, period=lookback, interval="1d",
+                          auto_adjust=True, progress=False, group_by="ticker")
+        if raw.empty:
+            return pd.DataFrame()
+        if len(tks) == 1:
+            # Un solo ticker → columnas planas
+            close = raw[["Close"]].copy()
+            close.columns = [tks[0]]
+        else:
+            # MultiIndex (ticker, campo) → extraer "Close"
+            close = raw.xs("Close", axis=1, level=1) if ("Close" in raw.columns.get_level_values(1)) \
+                    else raw.xs("Close", axis=1, level=0)
+        close.index = pd.to_datetime(close.index)
+        return close
+    except Exception:
+        return pd.DataFrame()
 
 
 @st.cache_data(ttl=14400, show_spinner=False)   # cache 4 horas
@@ -105,9 +134,9 @@ def render():
             total_ret  = (total_gan / total_cost * 100) if total_cost else 0
 
             c1, c2, c3, c4 = st.columns(4)
-            with c1: st.metric("Valor total", fmt_clp(total_val))
-            with c2: st.metric("Total invertido", fmt_clp(total_cost))
-            with c3: st.metric("Ganancia / Pérdida", fmt_clp(total_gan), delta=fmt_pct(total_ret))
+            with c1: metric_safe("Valor total", fmt_clp(total_val))
+            with c2: metric_safe("Total invertido", fmt_clp(total_cost))
+            with c3: metric_safe("Ganancia / Pérdida", fmt_clp(total_gan), delta=fmt_pct(total_ret))
             with c4: st.metric("Posiciones", str(len(df)))
 
             st.divider()
@@ -241,6 +270,154 @@ def render():
             else:
                 st.info("Sin historial de transacciones.")
 
+            # ── Gráfico P&L por período (precios de mercado) ──
+            st.divider()
+            section_title("📊 P&L por período (precios de mercado)")
+            st.caption("Ganancia/pérdida de cada activo en el período, basada en precio de apertura y cierre. Usa cantidad actual como aproximación.")
+
+            col_pnl1, col_pnl2, col_pnl3 = st.columns(3)
+            with col_pnl1:
+                pnl_periodo = st.radio(
+                    "Período", ["Semana", "Mes", "Quarter", "Año"],
+                    horizontal=True, key="pnl_periodo"
+                )
+            with col_pnl2:
+                pnl_group = st.selectbox(
+                    "Agrupar por", ["Tipo", "Sector", "Ticker"],
+                    key="pnl_group"
+                )
+            with col_pnl3:
+                pnl_lookback = st.selectbox(
+                    "Histórico", ["6mo", "1y", "2y", "5y"],
+                    index=1, key="pnl_lookback"
+                )
+
+            try:
+                df_pnl_pos = _enrich(df_cartera)
+                # Construir yf_map con .SN para Chile
+                yf_map_pnl = {
+                    row["ticker"]: (f"{row['ticker']}.SN" if row.get("mercado") == "nacional" else row["ticker"])
+                    for _, row in df_pnl_pos.drop_duplicates("ticker").iterrows()
+                    if pd.notna(row.get("ticker"))
+                }
+                yf_tickers_pnl = tuple(sorted(set(yf_map_pnl.values())))
+
+                with st.spinner(f"Descargando precios históricos ({len(yf_tickers_pnl)} tickers)…"):
+                    hist = _fetch_price_history(yf_tickers_pnl, pnl_lookback)
+
+                if hist.empty:
+                    st.warning("No se pudieron descargar precios históricos. Verifica conexión.")
+                else:
+                    # Frecuencia de resample
+                    freq_map_pnl = {"Semana": "W", "Mes": "ME", "Quarter": "QE", "Año": "YE"}
+                    period_key_pnl = {"W": "W", "ME": "M", "QE": "Q", "YE": "Y"}
+                    freq_pnl = freq_map_pnl[pnl_periodo]
+                    pk_pnl = period_key_pnl[freq_pnl]
+
+                    # Calcular P&L por período y posición
+                    pnl_rows_list = []
+                    for _, pos_row in df_pnl_pos.iterrows():
+                        tk_orig = pos_row["ticker"]
+                        tk_yf   = yf_map_pnl.get(tk_orig, tk_orig)
+                        qty     = pos_row.get("cantidad", 0) or 0
+                        moneda  = pos_row.get("moneda", "USD")
+                        tipo    = pos_row.get("tipo", "—")
+                        sector  = pos_row.get("sector", "—")
+
+                        if tk_yf not in hist.columns:
+                            continue
+
+                        prices = hist[tk_yf].dropna()
+                        if prices.empty:
+                            continue
+
+                        # Resample: primer y último precio del período
+                        resampled = prices.resample(freq_pnl).agg(first="first", last="last").dropna()
+
+                        for idx_r, r_row in resampled.iterrows():
+                            price_delta = r_row["last"] - r_row["first"]
+                            # P&L en moneda del activo
+                            pnl_local = price_delta * qty
+                            # Convertir a CLP
+                            pnl_clp = pnl_local if moneda == "CLP" else pnl_local * USD_CLP
+
+                            # Formatear período
+                            p = pd.Period(idx_r, pk_pnl)
+                            if pk_pnl == "W":
+                                p_label = f"{p.start_time.year}-W{p.start_time.strftime('%V')}"
+                            elif pk_pnl == "Q":
+                                p_label = f"{p.year}-Q{p.quarter}"
+                            else:
+                                p_label = str(p)
+
+                            pnl_rows_list.append({
+                                "periodo": p_label,
+                                "_sort": p.start_time if hasattr(p, "start_time") else idx_r,
+                                "ticker": tk_orig,
+                                "tipo": tipo,
+                                "sector": sector,
+                                "pnl_clp": pnl_clp,
+                            })
+
+                    if not pnl_rows_list:
+                        st.info("Sin datos de P&L para el período seleccionado.")
+                    else:
+                        df_pnl = pd.DataFrame(pnl_rows_list)
+                        group_col = {"Tipo": "tipo", "Sector": "sector", "Ticker": "ticker"}[pnl_group]
+
+                        grp_pnl = (df_pnl.groupby(["periodo", "_sort", group_col])["pnl_clp"]
+                                   .sum().reset_index()
+                                   .sort_values("_sort"))
+                        grp_pnl["pnl_fmt"] = grp_pnl["pnl_clp"].apply(fmt_clp)
+                        grp_pnl["color_val"] = grp_pnl["pnl_clp"].apply(lambda x: "gain" if x >= 0 else "loss")
+
+                        orden_pnl = grp_pnl["periodo"].drop_duplicates().tolist()
+
+                        fig_pnl = px.bar(
+                            grp_pnl,
+                            x="periodo", y="pnl_clp",
+                            color=group_col,
+                            barmode="relative",
+                            category_orders={"periodo": orden_pnl},
+                            custom_data=["pnl_fmt", group_col],
+                            labels={"periodo": "", "pnl_clp": "P&L (CLP)", group_col: pnl_group},
+                            color_discrete_sequence=ASSET_COLORS,
+                        )
+                        fig_pnl.update_traces(
+                            hovertemplate=(
+                                "<b>%{x}</b><br>"
+                                "%{customdata[1]}<br>"
+                                "P&L: %{customdata[0]}"
+                                "<extra></extra>"
+                            )
+                        )
+                        fig_pnl.add_hline(y=0, line_color="#888", line_width=1.5)
+                        fig_pnl.update_layout(
+                            paper_bgcolor="rgba(0,0,0,0)",
+                            plot_bgcolor="rgba(0,0,0,0)",
+                            font_color="#ccd6f6",
+                            margin=dict(t=10, b=10, l=10, r=10),
+                            height=400,
+                            xaxis=dict(showgrid=False, tickangle=-45),
+                            yaxis=dict(gridcolor="#2d3250"),
+                            legend=dict(orientation="h", y=-0.3, font=dict(size=10)),
+                        )
+                        st.plotly_chart(fig_pnl, use_container_width=True)
+
+                        # Tabla resumen P&L total por grupo en período seleccionado
+                        pnl_total = (grp_pnl.groupby(group_col)["pnl_clp"]
+                                     .sum().reset_index().sort_values("pnl_clp", ascending=False))
+                        pnl_total["P&L CLP"] = pnl_total["pnl_clp"].apply(fmt_clp)
+                        pnl_total["% del total"] = (
+                            pnl_total["pnl_clp"] / pnl_total["pnl_clp"].abs().sum() * 100
+                        ).round(1).astype(str) + "%"
+                        pnl_total = pnl_total.drop(columns="pnl_clp")
+                        pnl_total.columns = [pnl_group, "P&L CLP", "% Participación"]
+                        st.dataframe(pnl_total, hide_index=True, use_container_width=True)
+
+            except Exception as e:
+                st.warning(f"Error al calcular P&L: {e}")
+
             # ── Gráfico por sector / industria ───────────────
             st.divider()
             section_title("Distribución por sector / industria")
@@ -281,9 +458,9 @@ def render():
             # Tabla
             section_title("Detalle completo")
             tbl = df_f[["ticker","empresa","tipo","pais","mercado","cantidad","valor_clp","costo_clp","ganancia_clp","retorno_pct"]].copy()
-            tbl["valor_clp"]    = tbl["valor_clp"].apply(fmt_clp)
-            tbl["costo_clp"]    = tbl["costo_clp"].apply(fmt_clp)
-            tbl["ganancia_clp"] = tbl["ganancia_clp"].apply(fmt_clp)
+            tbl["valor_clp"]    = tbl["valor_clp"].apply(fmt_clp_safe)
+            tbl["costo_clp"]    = tbl["costo_clp"].apply(fmt_clp_safe)
+            tbl["ganancia_clp"] = tbl["ganancia_clp"].apply(fmt_clp_safe)
             tbl["retorno_pct"]  = tbl["retorno_pct"].apply(fmt_pct)
             tbl.columns = ["Ticker","Empresa","Tipo","País","Mercado","Cantidad","Valor CLP","Costo CLP","Ganancia CLP","Retorno %"]
             st.dataframe(tbl, hide_index=True, use_container_width=True)
@@ -306,9 +483,9 @@ def render():
                 total_ret  = (total_gan / total_cost * 100) if total_cost else 0
 
                 c1, c2, c3, c4 = st.columns(4)
-                with c1: st.metric("Valor de mercado", fmt_clp(total_val))
-                with c2: st.metric("Costo total", fmt_clp(total_cost))
-                with c3: st.metric("Ganancia/Pérdida", fmt_clp(total_gan), delta=fmt_pct(total_ret))
+                with c1: metric_safe("Valor de mercado", fmt_clp(total_val))
+                with c2: metric_safe("Costo total", fmt_clp(total_cost))
+                with c3: metric_safe("Ganancia/Pérdida", fmt_clp(total_gan), delta=fmt_pct(total_ret))
                 with c4: st.metric("Posiciones", str(len(df_cl)))
 
                 st.divider()
@@ -367,9 +544,9 @@ def render():
                 total_ret      = (total_gan_clp / df_i["costo_clp"].sum() * 100) if df_i["costo_clp"].sum() else 0
 
                 c1, c2, c3, c4 = st.columns(4)
-                with c1: st.metric("Valor (USD)", fmt_usd(total_val_usd, 0), help=fmt_clp(total_val_clp))
-                with c2: st.metric("Costo (USD)", fmt_usd(total_cost_usd, 0))
-                with c3: st.metric("Ganancia", fmt_usd(total_gan_clp/USD_CLP, 0), delta=fmt_pct(total_ret))
+                with c1: metric_safe("Valor (USD)", fmt_usd(total_val_usd, 0), help=fmt_clp(total_val_clp))
+                with c2: metric_safe("Costo (USD)", fmt_usd(total_cost_usd, 0))
+                with c3: metric_safe("Ganancia", fmt_usd(total_gan_clp/USD_CLP, 0), delta=fmt_pct(total_ret))
                 with c4: st.metric("Posiciones", str(len(df_i)))
 
                 st.divider()

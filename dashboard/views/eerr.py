@@ -7,7 +7,7 @@ import plotly.graph_objects as go
 import streamlit as st
 
 from dashboard.utils import (
-    fmt_clp, fmt_pct, section_title,
+    fmt_clp, fmt_clp_safe, fmt_pct, metric_safe, section_title,
     load_ingresos, load_gastos, load_racional,
 )
 from dashboard.categorias import categorizar_df
@@ -103,10 +103,10 @@ def render():
     tasa_inv   = (total_inv / total_ing * 100) if total_ing else 0
 
     c1, c2, c3, c4, c5 = st.columns(5)
-    with c1: st.metric("Ingresos", fmt_clp(total_ing))
-    with c2: st.metric("Gastos", fmt_clp(total_gas), delta=f"{tasa_gas:.1f}% ing.", delta_color="inverse")
-    with c3: st.metric("Inversiones", fmt_clp(total_inv), delta=f"{tasa_inv:.1f}% ing.")
-    with c4: st.metric("Resultado", fmt_clp(total_res))
+    with c1: metric_safe("Ingresos", fmt_clp(total_ing))
+    with c2: metric_safe("Gastos", fmt_clp(total_gas), delta=f"{tasa_gas:.1f}% ing.", delta_color_val="inverse")
+    with c3: metric_safe("Inversiones", fmt_clp(total_inv), delta=f"{tasa_inv:.1f}% ing.")
+    with c4: metric_safe("Resultado", fmt_clp(total_res))
     with c5: st.metric("Tasa ahorro", fmt_pct(tasa_aho))
 
     st.divider()
@@ -196,7 +196,7 @@ def render():
     lineas_pct = ["Tasa Gasto %", "Tasa Inversión %", "Tasa Ahorro %"]
     tbl_fmt = tbl_num.copy()
     for col in lineas_clp:
-        tbl_fmt[col] = tbl_fmt[col].apply(fmt_clp)
+        tbl_fmt[col] = tbl_fmt[col].apply(fmt_clp_safe)
     for col in lineas_pct:
         tbl_fmt[col] = tbl_fmt[col].apply(fmt_pct)
 
@@ -220,6 +220,6 @@ def render():
                .sum().reset_index().sort_values(monto_col, ascending=False))
         total_eerr = grp[monto_col].sum()
         grp["% Total"] = (grp[monto_col] / total_eerr * 100).round(1).astype(str) + "%"
-        grp[monto_col] = grp[monto_col].apply(fmt_clp)
+        grp[monto_col] = grp[monto_col].apply(fmt_clp_safe)
         grp.columns = ["Nivel", "Subcategoría", "Total", "% Total"]
         st.dataframe(grp, hide_index=True, use_container_width=True)

@@ -45,6 +45,53 @@ def delta_color(v):
         return "gray"
 
 
+# ── PRIVACY TOGGLE ────────────────────────────────────────
+
+def amounts_hidden() -> bool:
+    """Retorna True si el usuario activó ocultar montos."""
+    import streamlit as st
+    return st.session_state.get("hide_amounts", False)
+
+
+def fmt_clp_safe(v, decimals=0) -> str:
+    """fmt_clp() pero muestra '••••••' si hide_amounts está activo."""
+    if amounts_hidden():
+        return "••••••"
+    return fmt_clp(v, decimals)
+
+
+def fmt_usd_safe(v, decimals=2) -> str:
+    """fmt_usd() pero muestra '••••••' si hide_amounts está activo."""
+    if amounts_hidden():
+        return "••••••"
+    return fmt_usd(v, decimals)
+
+
+def metric_safe(label: str, value, delta=None, delta_color_val: str = "normal", help: str = None):
+    """st.metric() que oculta el valor si hide_amounts está activo."""
+    import streamlit as st
+    display_value = "••••••" if amounts_hidden() else value
+    display_delta = None if amounts_hidden() else delta
+    kwargs = {"label": label, "value": display_value}
+    if display_delta is not None:
+        kwargs["delta"] = display_delta
+        kwargs["delta_color"] = delta_color_val
+    if help:
+        kwargs["help"] = help
+    st.metric(**kwargs)
+
+
+def render_eye_toggle():
+    """Renderiza el botón 👁/🙈 en la sidebar para ocultar/mostrar montos."""
+    import streamlit as st
+    if "hide_amounts" not in st.session_state:
+        st.session_state.hide_amounts = False
+    label = "🙈 Ocultar montos" if not st.session_state.hide_amounts else "👁 Mostrar montos"
+    if st.button(label, use_container_width=True, key="toggle_hide_amounts"):
+        st.session_state.hide_amounts = not st.session_state.hide_amounts
+        st.rerun()
+
+
 # ── ESTILOS ───────────────────────────────────────────────
 
 COLORS = {

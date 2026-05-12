@@ -10,6 +10,7 @@ import streamlit as st
 
 from dashboard.utils import (
     fmt_clp, fmt_usd, fmt_pct,
+    fmt_clp_safe, fmt_usd_safe, metric_safe, amounts_hidden,
     section_title, ASSET_COLORS,
     load_cartera, load_buda, load_ingresos, get_usd_clp,
 )
@@ -82,11 +83,11 @@ def render():
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        st.metric("💼 Patrimonio (filtrado)", fmt_clp(total_clp))
+        metric_safe("💼 Patrimonio (filtrado)", fmt_clp(total_clp))
     with c2:
-        st.metric("📥 Costo total invertido", fmt_clp(costo_clp))
+        metric_safe("📥 Costo total invertido", fmt_clp(costo_clp))
     with c3:
-        st.metric("📈 Ganancia / Pérdida", fmt_clp(ganancia), delta=fmt_pct(retorno))
+        metric_safe("📈 Ganancia / Pérdida", fmt_clp(ganancia), delta=fmt_pct(retorno))
     with c4:
         st.metric("🗂 Posiciones", str(n_pos))
 
@@ -112,7 +113,7 @@ def render():
             margin=dict(t=10, b=10, l=10, r=10),
             height=300,
             annotations=[dict(
-                text=f"<b>{fmt_clp(total_clp)}</b>",
+                text=f"<b>{fmt_clp_safe(total_clp)}</b>",
                 x=0.5, y=0.5, font_size=13, showarrow=False, font_color="#ccd6f6"
             )],
         )
@@ -195,9 +196,9 @@ def render():
     ).reset_index().sort_values("Valor_CLP", ascending=False)
     costo_safe2 = grp_full["Costo_CLP"].where(grp_full["Costo_CLP"] != 0, other=np.nan)
     grp_full["Retorno %"] = (grp_full["Ganancia_CLP"] / costo_safe2 * 100).round(1)
-    grp_full["Valor_CLP"]    = grp_full["Valor_CLP"].apply(fmt_clp)
-    grp_full["Costo_CLP"]    = grp_full["Costo_CLP"].apply(fmt_clp)
-    grp_full["Ganancia_CLP"] = grp_full["Ganancia_CLP"].apply(fmt_clp)
+    grp_full["Valor_CLP"]    = grp_full["Valor_CLP"].apply(fmt_clp_safe)
+    grp_full["Costo_CLP"]    = grp_full["Costo_CLP"].apply(fmt_clp_safe)
+    grp_full["Ganancia_CLP"] = grp_full["Ganancia_CLP"].apply(fmt_clp_safe)
     grp_full["Retorno %"]    = grp_full["Retorno %"].apply(fmt_pct)
     grp_full.columns = ["Tipo", "Posiciones", "Valor CLP", "Costo CLP", "Ganancia CLP", "Retorno %"]
     st.dataframe(grp_full, hide_index=True, use_container_width=True)
@@ -209,6 +210,6 @@ def render():
         total_ing = pd.to_numeric(df_ingresos["monto"], errors="coerce").sum()
         avg       = total_ing / len(df_ingresos)
         c1, c2, c3 = st.columns(3)
-        with c1: st.metric("Total 12 meses", fmt_clp(total_ing))
-        with c2: st.metric("Promedio mensual", fmt_clp(avg))
+        with c1: metric_safe("Total 12 meses", fmt_clp(total_ing))
+        with c2: metric_safe("Promedio mensual", fmt_clp(avg))
         with c3: st.metric("Tasa inversión / ingreso", fmt_pct(costo_clp / total_ing * 100) if total_ing else "-")

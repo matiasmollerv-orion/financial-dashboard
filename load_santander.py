@@ -182,20 +182,30 @@ def clean_row(r, extra=None, allowed_cols=None):
         row = {k: v for k, v in row.items() if k in allowed_cols}
     return row
 
-# ── Cargar claves existentes para deduplicar ──────────────
+# ── Cargar claves existentes para deduplicar (PAGINADO) ───
 print("\n🔍 Cargando claves existentes para deduplicar...")
 
-existing_gastos = sb.table("santander_gastos").select("fecha,descripcion,monto,moneda").execute()
-existing_gastos_keys = set(
-    (r["fecha"], (r["descripcion"] or "").strip().upper(), str(round(float(r["monto"] or 0), 0)), r["moneda"])
-    for r in existing_gastos.data
-)
+def fetch_all_keys(tabla, cols="fecha,descripcion,monto,moneda", page_size=1000):
+    """Carga TODAS las filas de una tabla con paginación para evitar límite de 1000 filas."""
+    all_rows, page = [], 0
+    while True:
+        start = page * page_size
+        r = sb.table(tabla).select(cols).range(start, start + page_size - 1).execute()
+        all_rows.extend(r.data)
+        if len(r.data) < page_size:
+            break
+        page += 1
+    return all_rows
 
-existing_cuenta = sb.table("santander_cuenta").select("fecha,descripcion,monto,moneda").execute()
-existing_cuenta_keys = set(
-    (r["fecha"], (r["descripcion"] or "").strip().upper(), str(round(float(r["monto"] or 0), 0)), r["moneda"])
-    for r in existing_cuenta.data
-)
+def rows_to_keys(rows):
+    return set(
+        (r["fecha"], (r["descripcion"] or "").strip().upper(),
+         str(round(float(r["monto"] or 0), 0)), r["moneda"])
+        for r in rows
+    )
+
+existing_gastos_keys = rows_to_keys(fetch_all_keys("santander_gastos"))
+existing_cuenta_keys = rows_to_keys(fetch_all_keys("santander_cuenta"))
 print(f"   santander_gastos: {len(existing_gastos_keys)} filas existentes")
 print(f"   santander_cuenta: {len(existing_cuenta_keys)} filas existentes")
 

@@ -7,7 +7,10 @@ import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
 
-from dashboard.utils import fmt_clp, section_title, load_gastos, ASSET_COLORS
+from dashboard.utils import (
+    fmt_clp, fmt_clp_safe, metric_safe, amounts_hidden,
+    section_title, load_gastos, ASSET_COLORS,
+)
 from dashboard.categorias import categorizar_df
 
 # Paleta para subcategorías
@@ -108,9 +111,9 @@ def render():
     prom   = total / n_ops if n_ops else 0
 
     c1, c2, c3 = st.columns(3)
-    with c1: st.metric("Total gastos", fmt_clp(total))
+    with c1: metric_safe("Total gastos", fmt_clp(total))
     with c2: st.metric("N° operaciones", str(n_ops))
-    with c3: st.metric("Promedio por operación", fmt_clp(prom))
+    with c3: metric_safe("Promedio por operación", fmt_clp(prom))
 
     st.divider()
 
@@ -141,7 +144,7 @@ def render():
             margin=dict(t=10, b=10, l=10, r=10),
             height=290,
             annotations=[dict(
-                text=f"<b>{fmt_clp(total)}</b>",
+                text=f"<b>{fmt_clp_safe(total)}</b>",
                 x=0.5, y=0.5, font_size=12, showarrow=False, font_color="#ccd6f6"
             )],
         )
@@ -237,37 +240,59 @@ def render():
     )
     # Capturar click en barra (Streamlit ≥ 1.33)
     meses_disponibles = sorted(df_f["mes"].unique().tolist(), reverse=True)
+    subcats_disponibles = ["— Todas —"] + sorted(df_f["subcategoria"].dropna().unique().tolist())
     col_chart, col_sel = st.columns([3, 1])
     with col_chart:
         try:
             sel = st.plotly_chart(fig3, use_container_width=True,
                                   on_select="rerun", key="bar_meses")
-            mes_click = None
             if sel and sel.selection and sel.selection.points:
-                mes_click = sel.selection.points[0]["x"]
-                if "mes_detalle" not in st.session_state or st.session_state["mes_detalle"] != mes_click:
+                pt = sel.selection.points[0]
+                mes_click = pt.get("x")
+                # customdata[0] = subcategoria
+                sub_click = None
+                if pt.get("customdata"):
+                    sub_click = pt["customdata"][0]
+                if mes_click:
                     st.session_state["mes_detalle"] = mes_click
+                if sub_click:
+                    st.session_state["sub_detalle"] = sub_click
         except Exception:
             st.plotly_chart(fig3, use_container_width=True)
     with col_sel:
-        st.caption("Filtra mes:")
+        st.caption("Mes:")
         mes_sel_manual = st.selectbox(
             "Mes",
             ["— Todos —"] + meses_disponibles,
             key="mes_manual",
             label_visibility="collapsed",
         )
+        st.caption("Subcategoría:")
+        sub_sel_manual = st.selectbox(
+            "Subcategoría",
+            subcats_disponibles,
+            key="sub_manual",
+            label_visibility="collapsed",
+        )
 
-    # Mes a mostrar en detalle (click o manual)
+    # Mes y subcategoría a mostrar (click prevalece, manual como fallback)
     mes_detalle = st.session_state.get("mes_detalle") if mes_sel_manual == "— Todos —" else mes_sel_manual
+    sub_detalle = st.session_state.get("sub_detalle") if sub_sel_manual == "— Todas —" else sub_sel_manual
     if mes_sel_manual != "— Todos —":
         st.session_state["mes_detalle"] = mes_sel_manual
+    if sub_sel_manual != "— Todas —":
+        st.session_state["sub_detalle"] = sub_sel_manual
 
     if mes_detalle:
         df_mes_det = df_f[df_f["mes"] == mes_detalle].copy()
+        # Filtrar por subcategoría si se seleccionó
+        sub_label = ""
+        if sub_detalle and sub_detalle != "— Todas —":
+            df_mes_det = df_mes_det[df_mes_det["subcategoria"] == sub_detalle]
+            sub_label = f" · {sub_detalle}"
         if not df_mes_det.empty:
             st.divider()
-            section_title(f"Detalle {mes_detalle} — {fmt_clp(df_mes_det['monto'].sum())} en {len(df_mes_det)} transacciones")
+            section_title(f"Detalle {mes_detalle}{sub_label} — {fmt_clp(df_mes_det['monto'].sum())} en {len(df_mes_det)} transacciones")
 
             # ── Tabla con flags de feedback ───────────────
             st.caption("🚩 Marca una transacción para recategorizar")
@@ -284,7 +309,7 @@ def render():
                 with c1: st.write(row["fecha_str"])
                 with c2: st.write(row["descripcion"])
                 with c3: st.write(f"{row['subcategoria']}")
-                with c4: st.write(fmt_clp(row["monto"]))
+                with c4: st.write(fmt_clp_safe(row["monto"]))
                 with c5:
                     flag_label = "🚩" if key_id not in st.session_state["feedback"] else "✅"
                     if st.button(flag_label, key=f"flag_{idx}", help="Marcar para recategorizar"):
@@ -320,8 +345,8 @@ def render():
                .reset_index()
                .sort_values("Total", ascending=False))
     grp_tbl["% Total"] = (grp_tbl["Total"] / total * 100).round(1).astype(str) + "%"
-    grp_tbl["Total"]    = grp_tbl["Total"].apply(fmt_clp)
-    grp_tbl["Promedio"] = grp_tbl["Promedio"].apply(fmt_clp)
+    grp_tbl["Total"]    = grp_tbl["Total"].apply(fmt_clp_safe)
+    grp_tbl["Promedio"] = grp_tbl["Promedio"].apply(fmt_clp_safe)
     grp_tbl.columns = ["Nivel", "Subcategoría", "Total", "N° Ops", "Promedio", "% Total"]
     st.dataframe(grp_tbl, hide_index=True, use_container_width=True)
 
@@ -334,7 +359,7 @@ def render():
     if "fecha" in tbl.columns:
         tbl["fecha"] = tbl["fecha"].dt.strftime("%Y-%m-%d")
     if "monto" in tbl.columns:
-        tbl["monto"] = tbl["monto"].apply(fmt_clp)
+        tbl["monto"] = tbl["monto"].apply(fmt_clp_safe)
     tbl.columns = [c.replace("_", " ").title() for c in tbl.columns]
     st.dataframe(tbl, hide_index=True, use_container_width=True)
 
@@ -362,9 +387,9 @@ def render():
         df_cat = df_f[(df_f["top_level"] == top_drll) & (df_f["subcategoria"] == sub_drll)].copy()
 
         c1, c2, c3 = st.columns(3)
-        with c1: st.metric("Total", fmt_clp(df_cat["monto"].sum()))
+        with c1: metric_safe("Total", fmt_clp(df_cat["monto"].sum()))
         with c2: st.metric("N° operaciones", len(df_cat))
-        with c3: st.metric("Ticket promedio", fmt_clp(df_cat["monto"].mean()))
+        with c3: metric_safe("Ticket promedio", fmt_clp(df_cat["monto"].mean()))
 
         col_l, col_r = st.columns(2)
 
@@ -398,7 +423,7 @@ def render():
                          .reset_index()
                          .sort_values("Total", ascending=False)
                          .head(10))
-            top_merch["Total"] = top_merch["Total"].apply(fmt_clp)
+            top_merch["Total"] = top_merch["Total"].apply(fmt_clp_safe)
             top_merch.columns = ["Descripción", "Total", "Veces"]
             st.dataframe(top_merch, hide_index=True, use_container_width=True, height=240)
 
@@ -406,7 +431,7 @@ def render():
         with st.expander(f"Ver todas las transacciones ({len(df_cat)})"):
             tbl_cat = df_cat[["fecha", "descripcion", "monto"]].sort_values("fecha", ascending=False).copy()
             tbl_cat["fecha"] = tbl_cat["fecha"].dt.strftime("%Y-%m-%d")
-            tbl_cat["monto"] = tbl_cat["monto"].apply(fmt_clp)
+            tbl_cat["monto"] = tbl_cat["monto"].apply(fmt_clp_safe)
             tbl_cat.columns = ["Fecha", "Descripción", "Monto"]
             st.dataframe(tbl_cat, hide_index=True, use_container_width=True)
 
