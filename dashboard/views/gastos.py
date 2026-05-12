@@ -28,6 +28,12 @@ TOP_LEVEL_COLORS = {
 def render():
     st.title("💳 Gastos")
 
+    # ── Botón recargar caché ──────────────────────────────
+    with st.sidebar:
+        if st.button("🔄 Recargar datos", help="Limpia la caché y fuerza recarga desde Supabase"):
+            load_gastos.clear()
+            st.rerun()
+
     df_raw = load_gastos()
 
     if df_raw.empty:
@@ -42,6 +48,14 @@ def render():
             ```
             """)
         return
+
+    # Indicador de datos cargados — sirve para detectar problemas de caché
+    if "fecha" in df_raw.columns:
+        _fecha_parsed = pd.to_datetime(df_raw["fecha"], errors="coerce")
+        st.caption(
+            f"📦 {len(df_raw):,} registros cargados · "
+            f"{_fecha_parsed.min().strftime('%Y-%m-%d')} → {_fecha_parsed.max().strftime('%Y-%m-%d')}"
+        )
 
     # ── Enriquecer con categorías de 2 niveles ────────────
     df = categorizar_df(df_raw.copy())
@@ -218,18 +232,84 @@ def render():
         margin=dict(t=10, b=10, l=10, r=10),
         height=400,
         xaxis=dict(showgrid=False, tickangle=-45),
-        yaxis=dict(
-            gridcolor="#2d3250",
-            tickformat=",.0f",
-            tickprefix="$",
-        ),
-        legend=dict(
-            orientation="h",
-            y=-0.25,
-            font=dict(size=10),
-        ),
+        yaxis=dict(gridcolor="#2d3250"),
+        legend=dict(orientation="h", y=-0.25, font=dict(size=10)),
     )
-    st.plotly_chart(fig3, use_container_width=True)
+    # Capturar click en barra (Streamlit ≥ 1.33)
+    meses_disponibles = sorted(df_f["mes"].unique().tolist(), reverse=True)
+    col_chart, col_sel = st.columns([3, 1])
+    with col_chart:
+        try:
+            sel = st.plotly_chart(fig3, use_container_width=True,
+                                  on_select="rerun", key="bar_meses")
+            mes_click = None
+            if sel and sel.selection and sel.selection.points:
+                mes_click = sel.selection.points[0]["x"]
+                if "mes_detalle" not in st.session_state or st.session_state["mes_detalle"] != mes_click:
+                    st.session_state["mes_detalle"] = mes_click
+        except Exception:
+            st.plotly_chart(fig3, use_container_width=True)
+    with col_sel:
+        st.caption("Filtra mes:")
+        mes_sel_manual = st.selectbox(
+            "Mes",
+            ["— Todos —"] + meses_disponibles,
+            key="mes_manual",
+            label_visibility="collapsed",
+        )
+
+    # Mes a mostrar en detalle (click o manual)
+    mes_detalle = st.session_state.get("mes_detalle") if mes_sel_manual == "— Todos —" else mes_sel_manual
+    if mes_sel_manual != "— Todos —":
+        st.session_state["mes_detalle"] = mes_sel_manual
+
+    if mes_detalle:
+        df_mes_det = df_f[df_f["mes"] == mes_detalle].copy()
+        if not df_mes_det.empty:
+            st.divider()
+            section_title(f"Detalle {mes_detalle} — {fmt_clp(df_mes_det['monto'].sum())} en {len(df_mes_det)} transacciones")
+
+            # ── Tabla con flags de feedback ───────────────
+            st.caption("🚩 Marca una transacción para recategorizar")
+
+            if "feedback" not in st.session_state:
+                st.session_state["feedback"] = {}
+
+            df_mes_det = df_mes_det.sort_values("monto", ascending=False)
+            df_mes_det["fecha_str"] = df_mes_det["fecha"].dt.strftime("%Y-%m-%d")
+
+            for idx, row in df_mes_det.iterrows():
+                key_id = f"{row['fecha_str']}|{row['descripcion']}|{row['monto']}"
+                c1, c2, c3, c4, c5 = st.columns([2, 5, 3, 2, 1])
+                with c1: st.write(row["fecha_str"])
+                with c2: st.write(row["descripcion"])
+                with c3: st.write(f"{row['subcategoria']}")
+                with c4: st.write(fmt_clp(row["monto"]))
+                with c5:
+                    flag_label = "🚩" if key_id not in st.session_state["feedback"] else "✅"
+                    if st.button(flag_label, key=f"flag_{idx}", help="Marcar para recategorizar"):
+                        if key_id not in st.session_state["feedback"]:
+                            st.session_state["feedback"][key_id] = {
+                                "fecha": row["fecha_str"],
+                                "descripcion": row["descripcion"],
+                                "categoria_actual": f"{row['top_level']} › {row['subcategoria']}",
+                                "monto": row["monto"],
+                            }
+                            st.rerun()
+                        else:
+                            del st.session_state["feedback"][key_id]
+                            st.rerun()
+
+            # ── Feedback acumulado ─────────────────────────
+            if st.session_state.get("feedback"):
+                with st.expander(f"📋 Feedback pendiente ({len(st.session_state['feedback'])} items)"):
+                    fb_df = pd.DataFrame(st.session_state["feedback"].values())
+                    fb_df["monto"] = fb_df["monto"].apply(fmt_clp)
+                    st.dataframe(fb_df, hide_index=True, use_container_width=True)
+                    st.caption("Usa esta lista para agregar patrones en `dashboard/categorias.py`")
+                    if st.button("🗑️ Limpiar feedback"):
+                        st.session_state["feedback"] = {}
+                        st.rerun()
 
     # ── TABLA: RESUMEN POR SUBCATEGORÍA ───────────────────
     st.divider()

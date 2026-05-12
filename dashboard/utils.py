@@ -117,13 +117,46 @@ def section_title(text):
 
 # ── CARGA CON CACHE ───────────────────────────────────────
 
+def _get_sb():
+    """Retorna cliente Supabase. Siempre importa get_client fresco para evitar módulo cacheado."""
+    import sys, os, importlib
+    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
+    import database.supabase_client as _sc
+    importlib.reload(_sc)           # fuerza recarga del módulo en Streamlit Cloud (warm deploys)
+    return _sc.get_client()
+
+
+def _fetch_all_pages(table: str, order_col: str = "fecha", filters: dict = None,
+                     page_size: int = 1000) -> list:
+    """
+    Paginación inline — NO depende de supabase_client._fetch_all para evitar
+    que Streamlit Cloud use una versión cacheada del módulo.
+    """
+    sb = _get_sb()
+    q = sb.table(table).select("*").order(order_col, desc=True)
+    if filters:
+        for col, (op, val) in filters.items():
+            if op == "gte":
+                q = q.gte(col, val)
+            elif op == "lte":
+                q = q.lte(col, val)
+            elif op == "eq":
+                q = q.eq(col, val)
+    all_data, page = [], 0
+    while True:
+        start = page * page_size
+        result = q.range(start, start + page_size - 1).execute()
+        all_data.extend(result.data)
+        if len(result.data) < page_size:
+            break
+        page += 1
+    return all_data
+
+
 @st.cache_data(ttl=300)
 def load_cartera():
     """Carga cartera_actual desde Supabase."""
-    import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from database.supabase_client import get_client
-    sb = get_client()
+    sb = _get_sb()
     result = sb.table("cartera_actual").select("*").execute()
     df = pd.DataFrame(result.data)
     if df.empty:
@@ -136,16 +169,13 @@ def load_cartera():
 
 @st.cache_data(ttl=300)
 def load_racional():
-    """Carga transacciones Racional con monto_clp unificado."""
-    import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from database.supabase_client import get_racional_transacciones
-    df = get_racional_transacciones()
+    """Carga transacciones Racional con monto_clp unificado (paginado)."""
+    data = _fetch_all_pages("racional_transacciones")
+    df = pd.DataFrame(data)
     if df.empty:
         return df
     if "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"])
-    # Unificar monto en CLP: nacional → monto_clp directo; internacional → monto_usd × USD/CLP
     usd_clp = get_usd_clp()
     if "monto_clp" in df.columns and "monto_usd" in df.columns:
         df["monto_clp"] = pd.to_numeric(df["monto_clp"], errors="coerce")
@@ -156,11 +186,9 @@ def load_racional():
 
 @st.cache_data(ttl=300)
 def load_buda():
-    """Carga transacciones Buda crypto."""
-    import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from database.supabase_client import get_buda_crypto
-    df = get_buda_crypto()
+    """Carga transacciones Buda crypto (paginado)."""
+    data = _fetch_all_pages("buda_crypto")
+    df = pd.DataFrame(data)
     if not df.empty and "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"])
     return df
@@ -169,10 +197,9 @@ def load_buda():
 @st.cache_data(ttl=300)
 def load_ingresos():
     """Carga ingresos."""
-    import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from database.supabase_client import get_ingresos
-    df = get_ingresos()
+    sb = _get_sb()
+    result = sb.table("ingresos").select("*").order("fecha", desc=True).execute()
+    df = pd.DataFrame(result.data)
     if not df.empty and "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"])
     return df
@@ -180,11 +207,9 @@ def load_ingresos():
 
 @st.cache_data(ttl=300)
 def load_gastos():
-    """Carga gastos Santander (todas las filas, paginado)."""
-    import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from database.supabase_client import get_gastos
-    df = get_gastos()
+    """Carga gastos Santander — paginación INLINE para evitar módulo cacheado en Streamlit Cloud."""
+    data = _fetch_all_pages("santander_gastos")
+    df = pd.DataFrame(data)
     if not df.empty and "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"])
     return df
@@ -193,10 +218,10 @@ def load_gastos():
 @st.cache_data(ttl=300)
 def load_vector():
     """Carga comprobantes Vector Capital."""
-    import sys, os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
-    from database.supabase_client import get_comisiones
-    df = get_comisiones()
+    sb = _get_sb()
+    result = (sb.table("vector_capital_comprobantes").select("*")
+              .eq("es_comision", True).order("fecha", desc=True).execute())
+    df = pd.DataFrame(result.data)
     if not df.empty and "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"])
     return df

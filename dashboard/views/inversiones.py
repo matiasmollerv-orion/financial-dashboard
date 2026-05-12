@@ -19,13 +19,13 @@ USD_CLP = get_usd_clp()
 
 # ── Escala de color con contraste real (rojo-blanco-verde) ──
 HEAT_SCALE = [
-    [0.00, "#8b0000"],   # rojo oscuro   → muy negativo
-    [0.35, "#e74c3c"],   # rojo          → negativo
-    [0.50, "#e8e8e8"],   # gris claro    → 0%
-    [0.65, "#2ecc71"],   # verde         → positivo
-    [1.00, "#1a6b35"],   # verde oscuro  → muy positivo
+    [0.00, "#8b0000"],   # -40% → rojo oscuro
+    [0.25, "#e74c3c"],   # -10% → rojo
+    [0.40, "#e8e8e8"],   #   0% → gris neutro  ← posición exacta de 0 en rango [-40,60]
+    [0.58, "#2ecc71"],   # +11% → verde
+    [1.00, "#1a6b35"],   # +60% → verde oscuro
 ]
-HEAT_RANGE = [-40, 60]   # rango fijo para que 0 siempre sea gris
+HEAT_RANGE = [-40, 60]   # 0% ↔ posición 40/100 = 0.40 en la escala
 
 
 @st.cache_data(ttl=14400, show_spinner=False)   # cache 4 horas
@@ -140,6 +140,9 @@ def render():
 
             # Treemap
             section_title(f"Mapa de posiciones ({len(df_f)} activos)")
+            df_f["_val_fmt"] = df_f["valor_clp"].apply(fmt_clp)
+            df_f["_gan_fmt"] = df_f["ganancia_clp"].apply(fmt_clp)
+            df_f["_ret_fmt"] = df_f["retorno_pct"].apply(fmt_pct)
             fig = px.treemap(
                 df_f,
                 path=["tipo", "ticker"],
@@ -148,11 +151,17 @@ def render():
                 color_continuous_scale=HEAT_SCALE,
                 color_continuous_midpoint=0,
                 range_color=HEAT_RANGE,
-                custom_data=["empresa", "ganancia_clp"],
+                custom_data=["empresa", "_val_fmt", "_gan_fmt", "_ret_fmt"],
             )
             fig.update_traces(
-                texttemplate="<b>%{label}</b><br>%{value:,.0f}",
-                hovertemplate="<b>%{label}</b><br>%{customdata[0]}<br>Valor: %{value:,.0f}<br>Ganancia: %{customdata[1]:,.0f}<extra></extra>",
+                texttemplate="<b>%{label}</b><br>%{customdata[1]}<br>%{customdata[3]}",
+                hovertemplate=(
+                    "<b>%{label}</b><br>%{customdata[0]}<br>"
+                    "Valor: %{customdata[1]}<br>"
+                    "Ganancia: %{customdata[2]}<br>"
+                    "Retorno: %{customdata[3]}"
+                    "<extra></extra>"
+                ),
             )
             fig.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)",
@@ -183,27 +192,40 @@ def render():
                 period_key = {"W":"W","ME":"M","QE":"Q","YE":"Y"}[freq]
                 df_r["_period"] = df_r["fecha"].dt.to_period(period_key)
 
+                # _sort_key: fecha de inicio del período para ordenar cronológicamente
+                df_r["_sort_key"] = df_r["_period"].apply(lambda p: p.start_time)
+
                 if periodo == "Semana":
-                    # Formato "W10-23" (semana ISO 10 del año 2023)
+                    # "2023-W10" → ordena correctamente (año primero)
                     df_r["periodo"] = df_r["_period"].apply(
-                        lambda p: f"W{p.start_time.strftime('%V-%y')}"
+                        lambda p: f"{p.start_time.year}-W{p.start_time.strftime('%V')}"
                     )
                 elif periodo == "Quarter":
                     df_r["periodo"] = df_r["_period"].apply(
-                        lambda p: f"Q{p.quarter} {p.year}"
+                        lambda p: f"{p.year}-Q{p.quarter}"
                     )
                 else:
                     df_r["periodo"] = df_r["_period"].astype(str)
 
-                grp = df_r.groupby(["periodo", "mercado"])["monto_clp"].sum().reset_index()
+                grp = df_r.groupby(["_sort_key", "periodo", "mercado"])["monto_clp"].sum().reset_index()
+                grp = grp.sort_values("_sort_key")  # orden cronológico garantizado
 
+                # Orden de categorías para que Plotly respete el orden del DataFrame
+                orden_periodos = grp["periodo"].drop_duplicates().tolist()
+
+                grp["monto_fmt"] = grp["monto_clp"].apply(fmt_clp)
                 fig2 = px.bar(
                     grp,
                     x="periodo", y="monto_clp",
                     color="mercado",
                     barmode="stack",
+                    category_orders={"periodo": orden_periodos},
                     labels={"periodo": "", "monto_clp": "CLP", "mercado": "Mercado"},
                     color_discrete_map={"nacional": "#4e79a7", "internacional": "#f28e2b"},
+                    custom_data=["monto_fmt"],
+                )
+                fig2.update_traces(
+                    hovertemplate="<b>%{x}</b><br>%{customdata[0]}<extra></extra>",
                 )
                 fig2.update_layout(
                     paper_bgcolor="rgba(0,0,0,0)",
@@ -291,14 +313,27 @@ def render():
 
                 st.divider()
                 section_title("Mapa de posiciones")
+                df_cl["_val_fmt"] = df_cl["valor_clp"].apply(fmt_clp)
+                df_cl["_gan_fmt"] = df_cl["ganancia_clp"].apply(fmt_clp)
+                df_cl["_ret_fmt"] = df_cl["retorno_pct"].apply(fmt_pct)
                 fig = px.treemap(
                     df_cl, path=["ticker"], values="valor_clp",
                     color="retorno_pct",
-                    color_continuous_scale=["#e74c3c","#f39c12","#2ecc71"],
+                    color_continuous_scale=HEAT_SCALE,
                     color_continuous_midpoint=0,
-                    custom_data=["empresa","ganancia_clp"],
+                    range_color=HEAT_RANGE,
+                    custom_data=["empresa", "_val_fmt", "_gan_fmt", "_ret_fmt"],
                 )
-                fig.update_traces(texttemplate="<b>%{label}</b><br>%{value:,.0f}")
+                fig.update_traces(
+                    texttemplate="<b>%{label}</b><br>%{customdata[1]}<br>%{customdata[3]}",
+                    hovertemplate=(
+                        "<b>%{label}</b><br>%{customdata[0]}<br>"
+                        "Valor: %{customdata[1]}<br>"
+                        "Ganancia: %{customdata[2]}<br>"
+                        "Retorno: %{customdata[3]}"
+                        "<extra></extra>"
+                    ),
+                )
                 fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(t=10,b=10,l=10,r=10), height=300)
                 st.plotly_chart(fig, use_container_width=True)
 
@@ -344,15 +379,28 @@ def render():
                                 df_i["empresa"].str.contains(buscar, case=False, na=False)]
 
                 section_title("Mapa de posiciones (top 15)")
-                top15 = df_i.nlargest(15, "valor_clp")
+                top15 = df_i.nlargest(15, "valor_clp").copy()
+                top15["_val_fmt"] = top15["valor_clp"].apply(fmt_clp)
+                top15["_gan_fmt"] = top15["ganancia_clp"].apply(fmt_clp)
+                top15["_ret_fmt"] = top15["retorno_pct"].apply(fmt_pct)
                 fig = px.treemap(
                     top15, path=["tipo","ticker"], values="valor_clp",
                     color="retorno_pct",
-                    color_continuous_scale=["#e74c3c","#f39c12","#2ecc71"],
+                    color_continuous_scale=HEAT_SCALE,
                     color_continuous_midpoint=0,
-                    custom_data=["empresa"],
+                    range_color=HEAT_RANGE,
+                    custom_data=["empresa", "_val_fmt", "_gan_fmt", "_ret_fmt"],
                 )
-                fig.update_traces(texttemplate="<b>%{label}</b><br>%{value:,.0f}")
+                fig.update_traces(
+                    texttemplate="<b>%{label}</b><br>%{customdata[1]}<br>%{customdata[3]}",
+                    hovertemplate=(
+                        "<b>%{label}</b><br>%{customdata[0]}<br>"
+                        "Valor: %{customdata[1]}<br>"
+                        "Ganancia: %{customdata[2]}<br>"
+                        "Retorno: %{customdata[3]}"
+                        "<extra></extra>"
+                    ),
+                )
                 fig.update_layout(paper_bgcolor="rgba(0,0,0,0)", margin=dict(t=10,b=10,l=10,r=10), height=320)
                 st.plotly_chart(fig, use_container_width=True)
 
