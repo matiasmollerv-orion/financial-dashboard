@@ -116,6 +116,7 @@ with st.sidebar:
             "💳 Gastos",
             "📋 Estado de Resultados",
             "🔮 Proyecciones",
+            "🔍 Inteligencia",
         ],
         label_visibility="collapsed",
     )
@@ -160,4 +161,8 @@ elif pagina == "📋 Estado de Resultados":
 
 elif pagina == "🔮 Proyecciones":
     from dashboard.views.proyecciones import render
+    render()
+
+elif pagina == "🔍 Inteligencia":
+    from dashboard.views.intel import render
     render()

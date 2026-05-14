@@ -31,3 +31,7 @@ python-dotenv>=1.0.1       # leer .env
 pyyaml>=6.0.1              # leer email_sources.yaml
 requests>=2.32.0
 yfinance>=0.2.40
+
+# Inteligencia de mercado
+feedparser>=6.0.10         # parser de RSS
+anthropic>=0.34.0          # Claude API para análisis AI

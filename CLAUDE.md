@@ -34,7 +34,6 @@ dashboard/
   app.py              ← entry point Streamlit
   utils.py            ← fmt_clp, fmt_usd, fmt_pct, load_* con cache
   categorias.py       ← 5 niveles de categorización de gastos
-  categorias_test.py  ← tests de categorización (si existe)
   mappings.py         ← get_tipo(), get_pais(), get_sector() por ticker
   views/
     resumen.py        ← Resumen patrimonial
@@ -42,24 +41,40 @@ dashboard/
     gastos.py         ← Gastos Santander con categorización, drill-down y alertas
     eerr.py           ← Estado de Resultados mensual
     proyecciones.py   ← Proyecciones patrimoniales
+    intel.py          ← 🔍 Inteligencia: Daily Brief + alertas cartera + feed AI
 database/
   supabase_client.py  ← cliente Supabase, paginación automática
 extractors/
   santander_pdf.py    ← parser PDFs Santander (tarjeta + cuenta corriente)
-scripts/
-  load_santander.py   ← carga PDFs Santander a Supabase
-  load_racional_ventas.py ← carga emails Racional
+  buda_email.py       ← parser compras programadas BTC/ETH
+  racional_email.py   ← parser compras/ventas Racional
+intelligence/
+  schema.sql          ← SQL para crear tablas market_news, market_intelligence, portfolio_alerts
+  news_fetcher.py     ← RSS → market_news (filtro por ticker + macro keywords)
+  portfolio_health.py ← análisis independiente de cartera → portfolio_alerts
+  ai_analyst.py       ← Claude analiza noticias pendientes → market_intelligence
+  daily_brief.py      ← Daily Brief consolidado (1×día)
+load_santander.py     ← carga PDFs Santander a Supabase
+load_racional_ventas.py ← carga ventas Racional
+load_racional.py      ← carga compras Racional
+load_buda.py          ← carga compras crypto Buda
 ```
 
 ## Base de datos (Supabase)
 Tablas principales:
-- `santander_gastos`: gastos tarjeta de crédito (CLP y USD), 7.539+ filas 2019–2026
+- `santander_gastos`: gastos tarjeta de crédito (CLP y USD)
 - `santander_cuenta`: movimientos cuenta corriente
 - `racional_transacciones`: compras y ventas en Racional (internacional y nacional)
 - `cartera_actual`: posiciones actuales del portafolio
 - `buda_crypto`: transacciones crypto en Buda
 - `ingresos`: ingresos manuales registrados
 - `vector_capital_comprobantes`: comprobantes Vector Capital
+
+Tablas de inteligencia de mercado (ver `intelligence/schema.sql`):
+- `market_news`: noticias crudas filtradas por keyword match con cartera
+- `market_intelligence`: análisis AI de cada noticia (Claude Haiku)
+- `portfolio_alerts`: alertas independientes de cartera (concentración, drawdown, etc.)
+  - Categoría especial `daily_brief` guarda el resumen ejecutivo diario
 
 ## ⚠️ REGLAS CRÍTICAS — NO OLVIDAR
 

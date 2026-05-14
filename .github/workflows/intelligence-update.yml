@@ -1,0 +1,63 @@
+name: Market Intelligence Update
+
+on:
+  schedule:
+    # Cada 2 horas en horario de mercado (~6am-10pm Chile = 9-1am UTC)
+    # Lunes-Viernes
+    - cron: '0 9,11,13,15,17,19,21,23,1 * * 1-5'
+    # Sábado/Domingo: cada 4h por si hay news macro
+    - cron: '0 12,16,20 * * 6,0'
+  workflow_dispatch:
+
+jobs:
+  intelligence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Create .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
+          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
+
+      # 1. Recolectar noticias de RSS (no necesita API key)
+      - name: Fetch news
+        run: python -m intelligence.news_fetcher --hours 6
+        continue-on-error: true
+
+      # 2. Health check de cartera (independiente de noticias)
+      - name: Portfolio health monitor
+        run: python -m intelligence.portfolio_health
+        continue-on-error: true
+
+      # 3. Analizar noticias pendientes con Claude (solo si hay API key)
+      - name: AI analysis
+        if: ${{ env.ANTHROPIC_API_KEY != '' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python -m intelligence.ai_analyst --limit 30
+        continue-on-error: true
+
+      # 4. Generar Daily Brief (1 vez al día, ejecuta solo en cron de 11 UTC = 8am Chile)
+      - name: Daily Brief
+        if: ${{ env.ANTHROPIC_API_KEY != '' && github.event.schedule == '0 11 * * *' }}
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: python -m intelligence.daily_brief
+        continue-on-error: true
+
+      - name: Summary
+        if: always()
+        run: echo "✅ Intelligence update terminado a $(date)"
