@@ -14,6 +14,20 @@
 - Secrets en GitHub Actions: SUPABASE_URL, SUPABASE_KEY, SANTANDER_PDF_PASSWORD, GMAIL_TOKEN_PICKLE, GMAIL_CREDENTIALS
 - La rutina corre `--days 14` (modo incremental). El histórico se cargó manualmente una sola vez.
 
+### ⚠️ Scripts que DEBEN correr diariamente (verificar al hacer cambios)
+| Script | Tabla(s) | Qué carga |
+|--------|----------|-----------|
+| `load_santander.py --days 14` | `santander_gastos`, `santander_cuenta` | Tarjeta CLP/USD + cuenta corriente |
+| `load_racional_ventas.py --days 14` | `racional_transacciones` (tipo=venta) | Ventas "Vendiste X (TICKER)" |
+| `load_racional.py --days 14` | `racional_transacciones` (tipo=compra) | Compras "Invertiste en X (TICKER)" + portafolio nacional |
+| `load_buda.py --days 14` | `buda_crypto` | Compras programadas BTC/ETH |
+
+**TODOS estos pasos están en daily-update.yml con `continue-on-error: true`** — si uno falla, los demás siguen.
+
+**NO automatizado (carga manual ocasional):**
+- `load_to_supabase.py` → Vector Capital (vector_capital_comprobantes) — comprobantes esporádicos
+- `load_portfolio.py` → cartera_actual — refresca posiciones manualmente
+
 ## Estructura del proyecto
 ```
 dashboard/

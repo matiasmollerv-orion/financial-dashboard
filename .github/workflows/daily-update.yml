@@ -36,14 +36,36 @@ jobs:
           echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
           echo "SANTANDER_PDF_PASSWORD=${{ secrets.SANTANDER_PDF_PASSWORD }}" >> .env
 
-      - name: Run Santander update
+      - name: Run Santander update (gastos + cuenta corriente)
         run: python load_santander.py --days 14
+        continue-on-error: true
 
       - name: Run Racional ventas update
         run: python load_racional_ventas.py --days 14
+        continue-on-error: true
 
-      - name: Run Racional compras update (if exists)
+      - name: Run Racional compras update
         run: |
           if [ -f load_racional.py ]; then
             python load_racional.py --days 14
+          else
+            echo "⚠️ load_racional.py no existe — compras Racional no se cargarán"
           fi
+        continue-on-error: true
+
+      - name: Run Buda crypto update
+        run: |
+          if [ -f load_buda.py ]; then
+            python load_buda.py --days 14
+          else
+            echo "⚠️ load_buda.py no existe — compras Buda no se cargarán"
+          fi
+        continue-on-error: true
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "===== RESUMEN DE EJECUCIÓN ====="
+          echo "Fecha: $(date)"
+          echo "Si algún paso falla con ❌, revisa los logs arriba."
+          echo "================================="
