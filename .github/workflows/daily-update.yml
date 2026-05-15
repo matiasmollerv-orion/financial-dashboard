@@ -62,6 +62,13 @@ jobs:
           fi
         continue-on-error: true
 
+      - name: Reconcile iPhone notifications with PDF
+        run: |
+          if [ -f intelligence/reconcile_notifications.py ]; then
+            python -m intelligence.reconcile_notifications
+          fi
+        continue-on-error: true
+
       - name: Summary
         if: always()
         run: |
