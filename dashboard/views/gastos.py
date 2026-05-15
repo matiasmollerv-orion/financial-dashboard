@@ -186,35 +186,118 @@ def render():
         )
         st.plotly_chart(fig2, use_container_width=True)
 
-    # ── GRÁFICO: EVOLUCIÓN MENSUAL APILADA ────────────────
+    # ── GRÁFICO: EVOLUCIÓN POR PERÍODO (con granularidad) ──
     st.divider()
-    section_title("Evolución mensual por subcategoría")
+    section_title("Evolución por subcategoría")
+    st.caption("Haz click en una barra (o segmento de subcategoría) para ver el detalle de transacciones abajo.")
 
-    df_f["mes"] = df_f["fecha"].dt.to_period("M").astype(str)
+    # Controles propios del gráfico: granularidad + filtro de período
+    col_g1, col_g2 = st.columns(2)
+    with col_g1:
+        granularidad = st.radio(
+            "Granularidad",
+            ["Diaria", "Semanal", "Mensual", "Trimestral", "Anual"],
+            index=2,
+            key="gastos_granularidad",
+            horizontal=True,
+        )
+
+    # Opciones de período disponibles según df_f
+    df_f_dates = pd.to_datetime(df_f["fecha"])
+    period_options = ["Todos"]
+    if not df_f_dates.empty:
+        meses_es = {1:"Ene",2:"Feb",3:"Mar",4:"Abr",5:"May",6:"Jun",
+                    7:"Jul",8:"Ago",9:"Sep",10:"Oct",11:"Nov",12:"Dic"}
+        years = sorted(df_f_dates.dt.year.unique(), reverse=True)
+        for y in years:
+            period_options.append(str(y))
+            year_months = sorted(
+                df_f_dates[df_f_dates.dt.year == y].dt.month.unique(),
+                reverse=True
+            )
+            for m in year_months:
+                period_options.append(f"{meses_es[m]} {y}")
+
+    with col_g2:
+        periodo_sel = st.selectbox(
+            "Acotar a período",
+            period_options,
+            key="gastos_periodo_filter",
+        )
+
+    # Aplicar filtro de período del gráfico (encima de los top filters)
+    if periodo_sel != "Todos":
+        if " " in periodo_sel:
+            mes_str, y_str = periodo_sel.split()
+            meses_es_inv = {"Ene":1,"Feb":2,"Mar":3,"Abr":4,"May":5,"Jun":6,
+                            "Jul":7,"Ago":8,"Sep":9,"Oct":10,"Nov":11,"Dic":12}
+            mn = meses_es_inv.get(mes_str)
+            df_f = df_f[
+                (df_f["fecha"].dt.year == int(y_str)) &
+                (df_f["fecha"].dt.month == mn)
+            ]
+        else:
+            df_f = df_f[df_f["fecha"].dt.year == int(periodo_sel)]
+
+    if df_f.empty:
+        st.info("Sin datos para el período seleccionado.")
+        return
+
+    # Construir columna 'periodo' según granularidad
+    df_f = df_f.copy()
+    if granularidad == "Diaria":
+        df_f["periodo"] = df_f["fecha"].dt.strftime("%Y-%m-%d")
+        df_f["_sort"] = df_f["fecha"]
+        period_label = "Día"
+    elif granularidad == "Semanal":
+        _p = df_f["fecha"].dt.to_period("W")
+        df_f["periodo"] = _p.apply(lambda p: f"{p.start_time.year}-W{p.start_time.strftime('%V')}")
+        df_f["_sort"] = _p.apply(lambda p: p.start_time)
+        period_label = "Semana"
+    elif granularidad == "Mensual":
+        _p = df_f["fecha"].dt.to_period("M")
+        df_f["periodo"] = _p.astype(str)
+        df_f["_sort"] = _p.apply(lambda p: p.start_time)
+        period_label = "Mes"
+    elif granularidad == "Trimestral":
+        _p = df_f["fecha"].dt.to_period("Q")
+        df_f["periodo"] = _p.apply(lambda p: f"{p.year}-Q{p.quarter}")
+        df_f["_sort"] = _p.apply(lambda p: p.start_time)
+        period_label = "Trimestre"
+    else:  # Anual
+        df_f["periodo"] = df_f["fecha"].dt.year.astype(str)
+        df_f["_sort"] = df_f["fecha"].dt.year
+        period_label = "Año"
+
+    # Agregar columna 'mes' para compatibilidad con código de drill-down más abajo
+    df_f["mes"] = df_f["periodo"]
 
     # Pivot para stacked bar
-    grp_mes_sub = (df_f.groupby(["mes", "subcategoria"])["monto"]
-                   .sum().reset_index())
-    total_por_mes = df_f.groupby("mes")["monto"].sum().rename("total_mes")
-    grp_mes_sub = grp_mes_sub.merge(total_por_mes, on="mes")
-    grp_mes_sub["pct_mes"] = grp_mes_sub["monto"] / grp_mes_sub["total_mes"] * 100
-    grp_mes_sub["monto_fmt"] = grp_mes_sub["monto"].apply(fmt_clp)
-    grp_mes_sub["total_mes_fmt"] = grp_mes_sub["total_mes"].apply(fmt_clp)
+    grp_per_sub = (df_f.groupby(["periodo", "_sort", "subcategoria"])["monto"]
+                   .sum().reset_index().sort_values("_sort"))
+    total_por_per = df_f.groupby("periodo")["monto"].sum().rename("total_periodo")
+    grp_per_sub = grp_per_sub.merge(total_por_per, on="periodo")
+    grp_per_sub["pct_periodo"] = grp_per_sub["monto"] / grp_per_sub["total_periodo"] * 100
+    grp_per_sub["monto_fmt"] = grp_per_sub["monto"].apply(fmt_clp)
+    grp_per_sub["total_per_fmt"] = grp_per_sub["total_periodo"].apply(fmt_clp)
 
-    # Ordenar subcategorías por total descendente para colores consistentes
-    orden_subs = (grp_mes_sub.groupby("subcategoria")["monto"]
+    # Orden cronológico
+    orden_periodos = grp_per_sub.drop_duplicates("periodo").sort_values("_sort")["periodo"].tolist()
+
+    # Orden de subcategorías por total para colores consistentes
+    orden_subs = (grp_per_sub.groupby("subcategoria")["monto"]
                   .sum().sort_values(ascending=False).index.tolist())
 
     fig3 = px.bar(
-        grp_mes_sub,
-        x="mes",
+        grp_per_sub,
+        x="periodo",
         y="monto",
         color="subcategoria",
         barmode="stack",
-        category_orders={"subcategoria": orden_subs},
+        category_orders={"periodo": orden_periodos, "subcategoria": orden_subs},
         color_discrete_sequence=SUBCAT_COLORS,
-        custom_data=["subcategoria", "pct_mes", "total_mes_fmt", "monto_fmt"],
-        labels={"mes": "", "monto": "CLP", "subcategoria": ""},
+        custom_data=["subcategoria", "pct_periodo", "total_per_fmt", "monto_fmt"],
+        labels={"periodo": "", "monto": "CLP", "subcategoria": ""},
     )
     fig3.update_traces(
         hovertemplate=(
@@ -222,12 +305,10 @@ def render():
             "%{customdata[0]}<br>"
             "Monto: %{customdata[3]}<br>"
             "%{customdata[1]:.1f}% del período<br>"
-            "Total mes: %{customdata[2]}"
+            f"Total {period_label.lower()}: " + "%{customdata[2]}"
             "<extra></extra>"
         )
     )
-    # Formato del eje Y en CLP
-    max_val = grp_mes_sub.groupby("mes")["monto"].sum().max()
     fig3.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
@@ -238,58 +319,43 @@ def render():
         yaxis=dict(gridcolor="#2d3250"),
         legend=dict(orientation="h", y=-0.25, font=dict(size=10)),
     )
+
     # Capturar click en barra (Streamlit ≥ 1.33)
-    meses_disponibles = sorted(df_f["mes"].unique().tolist(), reverse=True)
-    subcats_disponibles = ["— Todas —"] + sorted(df_f["subcategoria"].dropna().unique().tolist())
-    col_chart, col_sel = st.columns([3, 1])
-    with col_chart:
-        try:
-            sel = st.plotly_chart(fig3, use_container_width=True,
-                                  on_select="rerun", key="bar_meses")
-            if sel and sel.selection and sel.selection.points:
-                pt = sel.selection.points[0]
-                mes_click = pt.get("x")
-                # customdata[0] = subcategoria
-                sub_click = None
-                if pt.get("customdata"):
-                    sub_click = pt["customdata"][0]
-                if mes_click:
-                    st.session_state["mes_detalle"] = mes_click
-                if sub_click:
-                    st.session_state["sub_detalle"] = sub_click
-        except Exception:
-            st.plotly_chart(fig3, use_container_width=True)
-    with col_sel:
-        st.caption("Mes:")
-        mes_sel_manual = st.selectbox(
-            "Mes",
-            ["— Todos —"] + meses_disponibles,
-            key="mes_manual",
-            label_visibility="collapsed",
-        )
-        st.caption("Subcategoría:")
-        sub_sel_manual = st.selectbox(
-            "Subcategoría",
-            subcats_disponibles,
-            key="sub_manual",
-            label_visibility="collapsed",
-        )
+    try:
+        sel = st.plotly_chart(fig3, use_container_width=True,
+                              on_select="rerun", key="bar_periodos")
+        if sel and sel.selection and sel.selection.points:
+            pt = sel.selection.points[0]
+            per_click = pt.get("x")
+            sub_click = None
+            if pt.get("customdata"):
+                sub_click = pt["customdata"][0]
+            if per_click:
+                st.session_state["mes_detalle"] = per_click
+            if sub_click:
+                st.session_state["sub_detalle"] = sub_click
+    except Exception:
+        st.plotly_chart(fig3, use_container_width=True)
 
-    # Mes y subcategoría a mostrar (click prevalece, manual como fallback)
-    mes_detalle = st.session_state.get("mes_detalle") if mes_sel_manual == "— Todos —" else mes_sel_manual
-    sub_detalle = st.session_state.get("sub_detalle") if sub_sel_manual == "— Todas —" else sub_sel_manual
-    if mes_sel_manual != "— Todos —":
-        st.session_state["mes_detalle"] = mes_sel_manual
-    if sub_sel_manual != "— Todas —":
-        st.session_state["sub_detalle"] = sub_sel_manual
+    # ── DETALLE DEL PERÍODO SELECCIONADO ──────────────────
+    mes_detalle = st.session_state.get("mes_detalle")
+    sub_detalle = st.session_state.get("sub_detalle")
 
-    if mes_detalle:
-        df_mes_det = df_f[df_f["mes"] == mes_detalle].copy()
-        # Filtrar por subcategoría si se seleccionó
+    if mes_detalle and mes_detalle in df_f["periodo"].unique():
+        df_mes_det = df_f[df_f["periodo"] == mes_detalle].copy()
         sub_label = ""
-        if sub_detalle and sub_detalle != "— Todas —":
+        if sub_detalle and sub_detalle != "— Todas —" and sub_detalle in df_f["subcategoria"].unique():
             df_mes_det = df_mes_det[df_mes_det["subcategoria"] == sub_detalle]
             sub_label = f" · {sub_detalle}"
+
+        # Botón para limpiar selección
+        col_clear, _ = st.columns([1, 5])
+        with col_clear:
+            if st.button("✖ Limpiar selección", key="clear_drill", use_container_width=True):
+                st.session_state.pop("mes_detalle", None)
+                st.session_state.pop("sub_detalle", None)
+                st.rerun()
+
         if not df_mes_det.empty:
             st.divider()
             section_title(f"Detalle {mes_detalle}{sub_label} — {fmt_clp(df_mes_det['monto'].sum())} en {len(df_mes_det)} transacciones")

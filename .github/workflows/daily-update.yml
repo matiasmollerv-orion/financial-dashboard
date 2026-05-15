@@ -69,6 +69,15 @@ jobs:
           fi
         continue-on-error: true
 
+      - name: Update cartera_actual (aplica racional+buda + precios yfinance)
+        run: |
+          if [ -f update_cartera.py ]; then
+            python update_cartera.py
+          else
+            echo "⚠️ update_cartera.py no existe — cartera_actual no se actualizará"
+          fi
+        continue-on-error: true
+
       - name: Summary
         if: always()
         run: |

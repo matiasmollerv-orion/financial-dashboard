@@ -208,24 +208,66 @@ def render():
                 df_r["fecha"]    = pd.to_datetime(df_r["fecha"])
                 df_r["monto_clp"] = pd.to_numeric(df_r["monto_clp"], errors="coerce")
 
-                periodo = st.radio(
-                    "Agrupar por",
-                    ["Semana", "Mes", "Quarter", "Año"],
-                    horizontal=True,
-                    key="con_periodo"
-                )
+                # Controles: granularidad + filtro de período
+                col_inv1, col_inv2 = st.columns(2)
+                with col_inv1:
+                    periodo = st.radio(
+                        "Granularidad",
+                        ["Día", "Semana", "Mes", "Quarter", "Año"],
+                        index=2,
+                        horizontal=True,
+                        key="con_periodo"
+                    )
 
-                freq_map = {"Semana": "W", "Mes": "ME", "Quarter": "QE", "Año": "YE"}
+                # Opciones de período
+                meses_es_inv = {1:"Ene",2:"Feb",3:"Mar",4:"Abr",5:"May",6:"Jun",
+                                7:"Jul",8:"Ago",9:"Sep",10:"Oct",11:"Nov",12:"Dic"}
+                period_options_inv = ["Todos"]
+                years_inv = sorted(df_r["fecha"].dt.year.unique(), reverse=True)
+                for y in years_inv:
+                    period_options_inv.append(str(y))
+                    year_months = sorted(
+                        df_r[df_r["fecha"].dt.year == y]["fecha"].dt.month.unique(),
+                        reverse=True
+                    )
+                    for m in year_months:
+                        period_options_inv.append(f"{meses_es_inv[m]} {y}")
+
+                with col_inv2:
+                    periodo_filter = st.selectbox(
+                        "Acotar a período",
+                        period_options_inv,
+                        key="con_periodo_filter"
+                    )
+
+                # Aplicar filtro de período
+                if periodo_filter != "Todos":
+                    if " " in periodo_filter:
+                        m_str, y_str = periodo_filter.split()
+                        m_inv = {"Ene":1,"Feb":2,"Mar":3,"Abr":4,"May":5,"Jun":6,
+                                 "Jul":7,"Ago":8,"Sep":9,"Oct":10,"Nov":11,"Dic":12}.get(m_str)
+                        df_r = df_r[
+                            (df_r["fecha"].dt.year == int(y_str)) &
+                            (df_r["fecha"].dt.month == m_inv)
+                        ]
+                    else:
+                        df_r = df_r[df_r["fecha"].dt.year == int(periodo_filter)]
+
+                if df_r.empty:
+                    st.info("Sin datos para el período seleccionado.")
+                    fig2 = None
+
+                freq_map = {"Día": "D", "Semana": "W", "Mes": "ME", "Quarter": "QE", "Año": "YE"}
 
                 freq = freq_map[periodo]
-                period_key = {"W":"W","ME":"M","QE":"Q","YE":"Y"}[freq]
+                period_key = {"D":"D","W":"W","ME":"M","QE":"Q","YE":"Y"}[freq]
                 df_r["_period"] = df_r["fecha"].dt.to_period(period_key)
 
-                # _sort_key: fecha de inicio del período para ordenar cronológicamente
                 df_r["_sort_key"] = df_r["_period"].apply(lambda p: p.start_time)
 
-                if periodo == "Semana":
-                    # "2023-W10" → ordena correctamente (año primero)
+                if periodo == "Día":
+                    df_r["periodo"] = df_r["fecha"].dt.strftime("%Y-%m-%d")
+                elif periodo == "Semana":
                     df_r["periodo"] = df_r["_period"].apply(
                         lambda p: f"{p.start_time.year}-W{p.start_time.strftime('%V')}"
                     )

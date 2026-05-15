@@ -21,12 +21,19 @@
 | `load_racional_ventas.py --days 14` | `racional_transacciones` (tipo=venta) | Ventas "Vendiste X (TICKER)" |
 | `load_racional.py --days 14` | `racional_transacciones` (tipo=compra) | Compras "Invertiste en X (TICKER)" + portafolio nacional |
 | `load_buda.py --days 14` | `buda_crypto` | Compras programadas BTC/ETH |
+| `intelligence/reconcile_notifications.py` | `santander_gastos` | Reconciliación notif iPhone vs PDF |
+| `update_cartera.py` | `cartera_actual` | Aplica compras/ventas Racional+Buda sobre snapshot base y refresca precios via yfinance |
 
 **TODOS estos pasos están en daily-update.yml con `continue-on-error: true`** — si uno falla, los demás siguen.
 
+### ⚠️ cartera_actual NO es estática
+- Base: snapshot manual al 2026-04-30 vía `load_portfolio.py` (datos hardcoded)
+- `update_cartera.py` lo lee y aplica todos los movimientos de `racional_transacciones` + `buda_crypto` posteriores a la fecha base
+- Después refresca precios con yfinance (incluyendo `.SN` para Chile y `-USD` para crypto)
+- NUNCA editar `load_portfolio.py` para "actualizar" — solo modificarlo si cambia la base; los movimientos se aplican automáticamente
+
 **NO automatizado (carga manual ocasional):**
 - `load_to_supabase.py` → Vector Capital (vector_capital_comprobantes) — comprobantes esporádicos
-- `load_portfolio.py` → cartera_actual — refresca posiciones manualmente
 
 ## Estructura del proyecto
 ```
