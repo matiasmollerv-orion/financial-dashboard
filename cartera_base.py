@@ -12,6 +12,11 @@
 
 SNAPSHOT_DATE = "2026-04-30"
 
+# Rentabilidad TWR reportada por Racional al SNAPSHOT_DATE (en %)
+# Usa este valor de PARTIDA para componer con el TWR calculado desde snapshot hasta hoy.
+# Editable: si Racional reporta hoy 46% pero al 30/04/2026 era 47.5%, pon 47.5.
+TWR_PRE_SNAPSHOT_PCT = 46.0
+
 # Acciones chilenas (Racional Portafolio CL)
 ACCIONES_CL = [
     {"ticker": "BCI",       "empresa": "Banco de Crédito e Inversiones", "mercado": "nacional", "cantidad": 30.0,     "precio_compra": 23930.43, "precio_actual": 60800.00, "moneda": "CLP"},

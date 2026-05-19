@@ -110,13 +110,121 @@ def render():
     df_cartera  = load_cartera()
     df_racional = load_racional()
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab_ret, tab2, tab3, tab4, tab5 = st.tabs([
         "📋 Consolidado",
+        "📊 Rentabilidad",
         "🇨🇱 Acciones Chile",
         "🌎 Internacional",
         "📊 Historial Racional",
         "🔬 Fundamentos",
     ])
+
+    # ────────────────────────────────────────────────────────
+    # TAB RENTABILIDAD — TODAS las métricas
+    # ────────────────────────────────────────────────────────
+    with tab_ret:
+        st.subheader("📊 Métricas de Rentabilidad")
+        st.caption(
+            "TWR = método Racional (excluye timing de depósitos). "
+            "MWR/XIRR = IRR anualizada con flujos reales. "
+            "Retorno cartera actual = retorno simple sobre posiciones que tienes hoy."
+        )
+
+        @st.cache_data(ttl=1800, show_spinner=False)
+        def _calc_returns(twr_pre):
+            try:
+                from intelligence.returns import compute_all_returns
+                return compute_all_returns(twr_pre_snapshot_pct=twr_pre)
+            except Exception as e:
+                st.error(f"Error calculando rentabilidad: {e}")
+                return None
+
+        # Input: TWR pre-snapshot (editable)
+        try:
+            from cartera_base import TWR_PRE_SNAPSHOT_PCT as _twr_pre_default
+        except Exception:
+            _twr_pre_default = 46.0
+
+        col_inp1, col_inp2 = st.columns([1, 3])
+        with col_inp1:
+            twr_pre = st.number_input(
+                "TWR Racional al snapshot (%)",
+                value=float(_twr_pre_default),
+                step=0.5,
+                help="Valor de 'Rentabilidad desde el inicio' que Racional reportaba al 2026-04-30. "
+                     "Editalo si es diferente. Para tener el dato exacto, mira en Racional al 30/04/2026."
+            )
+        with col_inp2:
+            st.markdown("")
+            st.markdown("")
+            st.info(f"📌 Usando **{twr_pre:.1f}%** como TWR pre-snapshot. Si Racional reportaba otro valor al 30/04/2026, ajusta arriba.")
+
+        with st.spinner("Calculando todas las métricas (descarga precios históricos)…"):
+            r = _calc_returns(twr_pre)
+
+        if not r:
+            st.warning("No se pudo calcular. Reintenta más tarde.")
+        else:
+            # ── Métricas principales (TWR es la headline) ─────
+            st.markdown("### 🎯 Headline")
+            c1, c2, c3 = st.columns(3)
+            with c1:
+                metric_safe(
+                    "TWR desde inicio",
+                    f"{r['twr_desde_inicio_pct']:.2f}%" if r['twr_desde_inicio_pct'] is not None else "—",
+                    delta=f"vs Racional ({twr_pre:.1f}% al snapshot)",
+                    help="Compuesto: TWR pre-snapshot × TWR período. Equivale al número que muestra Racional en 'Rentabilidad desde el inicio'."
+                )
+            with c2:
+                metric_safe(
+                    "TWR del período",
+                    f"{r['twr_pct']:.2f}%",
+                    help=f"TWR desde {r['snapshot_date']} hasta {r['end_date']} ({r['dias']} días)"
+                )
+            with c3:
+                metric_safe(
+                    "Retorno cartera actual",
+                    f"{r['retorno_cartera_pct']:.2f}%",
+                    help="Retorno simple sobre posiciones actuales: (valor - costo_compra) / costo_compra"
+                )
+
+            st.divider()
+
+            # ── Métricas del período ──────────────────────────
+            st.markdown("### 📅 Período")
+            c1, c2, c3, c4 = st.columns(4)
+            with c1: metric_safe("Valor inicial", fmt_clp(r["valor_inicial"]))
+            with c2: metric_safe("Valor final", fmt_clp(r["valor_final"]))
+            with c3: metric_safe("Flujos netos", fmt_clp(r["flujos_netos"]),
+                                 help="Compras - ventas en CLP durante el período")
+            with c4: metric_safe("Ganancia $", fmt_clp(r["ganancia_periodo"]),
+                                 help="V_final - V_inicial - flujos_netos. Esto sí refleja la plata real ganada/perdida.")
+
+            st.divider()
+
+            # ── Todas las métricas comparadas ─────────────────
+            st.markdown("### 🧮 Todas las métricas")
+            metricas_df = pd.DataFrame([
+                {"Métrica": "TWR del período",
+                 "Valor": f"{r['twr_pct']:.2f}%",
+                 "Descripción": f"Time-Weighted Return del período ({r['dias']} días). Excluye timing de depósitos. Es el método que usa Racional."},
+                {"Métrica": "TWR anualizado",
+                 "Valor": f"{r['twr_anualizado_pct']:.2f}%" if r['twr_anualizado_pct'] is not None else "—",
+                 "Descripción": "TWR del período llevado a tasa anual. Si el período es corto, este número puede ser engañosamente extremo."},
+                {"Métrica": "MWR / XIRR",
+                 "Valor": f"{r['mwr_pct']:.2f}%" if r['mwr_pct'] is not None else "—",
+                 "Descripción": "Money-Weighted Return. IRR anualizada considerando timing de flujos. Refleja tu rentabilidad personal."},
+                {"Métrica": "Retorno simple período",
+                 "Valor": f"{r['retorno_simple_pct']:.2f}%",
+                 "Descripción": "(V_fin - V_ini - flujos) / V_ini. No anualizado. Sin TWR."},
+                {"Métrica": "Retorno cartera actual",
+                 "Valor": f"{r['retorno_cartera_pct']:.2f}%",
+                 "Descripción": "(valor - costo_base) / costo_base sobre posiciones actuales. No incluye ganancias realizadas de ventas pasadas."},
+                {"Métrica": "TWR desde inicio (compuesto)",
+                 "Valor": f"{r['twr_desde_inicio_pct']:.2f}%" if r['twr_desde_inicio_pct'] is not None else "—",
+                 "Descripción": f"(1 + {twr_pre:.1f}%) × (1 + TWR_período) - 1. Lo más cercano a lo que muestra Racional."},
+            ])
+            st.dataframe(metricas_df, hide_index=True, use_container_width=True)
 
     # ────────────────────────────────────────────────────────
     # TAB 1: CONSOLIDADO
