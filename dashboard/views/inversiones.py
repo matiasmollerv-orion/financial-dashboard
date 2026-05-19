@@ -123,108 +123,200 @@ def render():
     # TAB RENTABILIDAD — TODAS las métricas
     # ────────────────────────────────────────────────────────
     with tab_ret:
+        from datetime import date, timedelta
         st.subheader("📊 Métricas de Rentabilidad")
-        st.caption(
-            "TWR = método Racional (excluye timing de depósitos). "
-            "MWR/XIRR = IRR anualizada con flujos reales. "
-            "Retorno cartera actual = retorno simple sobre posiciones que tienes hoy."
-        )
 
-        @st.cache_data(ttl=1800, show_spinner=False)
-        def _calc_returns(twr_pre):
-            try:
-                from intelligence.returns import compute_all_returns
-                return compute_all_returns(twr_pre_snapshot_pct=twr_pre)
-            except Exception as e:
-                st.error(f"Error calculando rentabilidad: {e}")
-                return None
-
-        # Input: TWR pre-snapshot (editable)
+        # ── Selector de período ──────────────────────────────
         try:
-            from cartera_base import TWR_PRE_SNAPSHOT_PCT as _twr_pre_default
+            from cartera_base import SNAPSHOT_DATE as _snap, TWR_PRE_SNAPSHOT_PCT as _twr_pre_default
         except Exception:
+            _snap = "2026-04-30"
             _twr_pre_default = 46.0
 
-        col_inp1, col_inp2 = st.columns([1, 3])
-        with col_inp1:
-            twr_pre = st.number_input(
-                "TWR Racional al snapshot (%)",
-                value=float(_twr_pre_default),
-                step=0.5,
-                help="Valor de 'Rentabilidad desde el inicio' que Racional reportaba al 2026-04-30. "
-                     "Editalo si es diferente. Para tener el dato exacto, mira en Racional al 30/04/2026."
+        hoy = date.today()
+        opciones_periodo = {
+            "Mes actual":          (date(hoy.year, hoy.month, 1).isoformat(), hoy.isoformat()),
+            "Mes anterior":        (
+                (date(hoy.year, hoy.month, 1) - timedelta(days=1)).replace(day=1).isoformat(),
+                (date(hoy.year, hoy.month, 1) - timedelta(days=1)).isoformat()
+            ),
+            "Últimos 3 meses":     ((hoy - timedelta(days=90)).isoformat(), hoy.isoformat()),
+            "Últimos 6 meses":     ((hoy - timedelta(days=180)).isoformat(), hoy.isoformat()),
+            "YTD (este año)":      (date(hoy.year, 1, 1).isoformat(), hoy.isoformat()),
+            "Últimos 12 meses":    ((hoy - timedelta(days=365)).isoformat(), hoy.isoformat()),
+            "Desde snapshot Racional": (_snap, hoy.isoformat()),
+        }
+
+        col_p1, col_p2 = st.columns([1, 2])
+        with col_p1:
+            periodo_sel = st.selectbox(
+                "Período",
+                list(opciones_periodo.keys()),
+                index=6,  # default: desde snapshot (más útil para compararse con Racional)
+                key="rent_periodo",
             )
-        with col_inp2:
-            st.markdown("")
-            st.markdown("")
-            st.info(f"📌 Usando **{twr_pre:.1f}%** como TWR pre-snapshot. Si Racional reportaba otro valor al 30/04/2026, ajusta arriba.")
+        start_date, end_date = opciones_periodo[periodo_sel]
+        with col_p2:
+            st.markdown(f"<br><span style='color:#888;'>Calculando {start_date} → {end_date}</span>",
+                        unsafe_allow_html=True)
+
+        # ⚠️ Limitar período: no podemos calcular antes del snapshot (no tenemos historial)
+        if pd.Timestamp(start_date) < pd.Timestamp(_snap):
+            st.warning(
+                f"⚠️ El período pedido empieza antes del snapshot ({_snap}). "
+                f"Para esas fechas no tenemos historial de transacciones, así que el cálculo "
+                f"empezará desde {_snap}."
+            )
+            start_date = _snap
+
+        # ── TWR Pre-snapshot (solo relevante si período = desde snapshot) ──
+        if periodo_sel == "Desde snapshot Racional":
+            col_inp1, col_inp2 = st.columns([1, 3])
+            with col_inp1:
+                twr_pre = st.number_input(
+                    "TWR Racional al snapshot (%)",
+                    value=float(_twr_pre_default),
+                    step=0.5,
+                    help="Valor de 'Rentabilidad desde el inicio' que Racional reportaba al 30/04/2026."
+                )
+            with col_inp2:
+                st.markdown("<br>", unsafe_allow_html=True)
+                st.caption(f"Componer con {twr_pre:.1f}% del período pre-snapshot. "
+                           f"Mira el valor exacto en Racional al 30/04/2026.")
+        else:
+            twr_pre = None
+
+        # ── Cálculo (cacheado) ───────────────────────────────
+        @st.cache_data(ttl=1800, show_spinner=False)
+        def _calc(start, end, twr_pre_val):
+            try:
+                from intelligence.returns import compute_all_returns
+                return compute_all_returns(start, end, twr_pre_val)
+            except Exception as e:
+                st.error(f"Error: {e}")
+                return None
 
         with st.spinner("Calculando todas las métricas (descarga precios históricos)…"):
-            r = _calc_returns(twr_pre)
+            r = _calc(start_date, end_date, twr_pre)
 
         if not r:
             st.warning("No se pudo calcular. Reintenta más tarde.")
         else:
-            # ── Métricas principales (TWR es la headline) ─────
+            # Helper: muestra una métrica con valor + fórmula + descripción claramente separados
+            def render_metric_block(titulo, valor, formula, descripcion):
+                metric_safe(titulo, valor)
+                st.markdown(f"📐 **Fórmula:** `{formula}`")
+                st.markdown(f"📖 **Descripción:** {descripcion}")
+                st.markdown("")  # spacing
+
+            # ── HEADLINE ──────────────────────────────────────
             st.markdown("### 🎯 Headline")
             c1, c2, c3 = st.columns(3)
             with c1:
-                metric_safe(
-                    "TWR desde inicio",
-                    f"{r['twr_desde_inicio_pct']:.2f}%" if r['twr_desde_inicio_pct'] is not None else "—",
-                    delta=f"vs Racional ({twr_pre:.1f}% al snapshot)",
-                    help="Compuesto: TWR pre-snapshot × TWR período. Equivale al número que muestra Racional en 'Rentabilidad desde el inicio'."
-                )
+                if r.get('twr_desde_inicio_pct') is not None:
+                    render_metric_block(
+                        "TWR desde inicio",
+                        f"{r['twr_desde_inicio_pct']:.2f}%",
+                        f"(1 + {twr_pre:.1f}%) × (1 + TWR_período) - 1",
+                        "Compone el TWR pre-snapshot con el TWR del período. Lo más cercano al número que muestra Racional."
+                    )
+                else:
+                    render_metric_block(
+                        "TWR del período",
+                        f"{r['twr_pct']:.2f}%",
+                        "∏(1 + r_día) - 1",
+                        "Time-Weighted Return del período seleccionado."
+                    )
             with c2:
-                metric_safe(
+                render_metric_block(
                     "TWR del período",
                     f"{r['twr_pct']:.2f}%",
-                    help=f"TWR desde {r['snapshot_date']} hasta {r['end_date']} ({r['dias']} días)"
+                    "∏(1 + r_día) - 1   donde   r_día = (V_día - F_día) / V_día_anterior - 1",
+                    "Excluye timing de depósitos. Es el método headline que usa Racional."
                 )
             with c3:
-                metric_safe(
+                render_metric_block(
                     "Retorno cartera actual",
                     f"{r['retorno_cartera_pct']:.2f}%",
-                    help="Retorno simple sobre posiciones actuales: (valor - costo_compra) / costo_compra"
+                    "(valor_actual - costo_base) / costo_base",
+                    "Retorno simple sobre las posiciones que tienes HOY. Independiente del período seleccionado."
                 )
 
             st.divider()
 
-            # ── Métricas del período ──────────────────────────
-            st.markdown("### 📅 Período")
+            # ── PERÍODO ───────────────────────────────────────
+            st.markdown(f"### 📅 Período: {start_date} → {end_date} ({r['dias']} días)")
             c1, c2, c3, c4 = st.columns(4)
-            with c1: metric_safe("Valor inicial", fmt_clp(r["valor_inicial"]))
-            with c2: metric_safe("Valor final", fmt_clp(r["valor_final"]))
-            with c3: metric_safe("Flujos netos", fmt_clp(r["flujos_netos"]),
-                                 help="Compras - ventas en CLP durante el período")
-            with c4: metric_safe("Ganancia $", fmt_clp(r["ganancia_periodo"]),
-                                 help="V_final - V_inicial - flujos_netos. Esto sí refleja la plata real ganada/perdida.")
+            with c1:
+                metric_safe("Valor inicial", fmt_clp(r["valor_inicial"]))
+                st.markdown("📖 **Descripción:** Valor de la cartera al inicio del período.")
+            with c2:
+                metric_safe("Valor final", fmt_clp(r["valor_final"]))
+                st.markdown("📖 **Descripción:** Valor de la cartera al final del período.")
+            with c3:
+                metric_safe("Flujos netos", fmt_clp(r["flujos_netos"]))
+                st.markdown("📐 **Fórmula:** `Σ compras - Σ ventas`")
+                st.markdown("📖 **Descripción:** Cuánto pusiste/sacaste en CLP durante el período.")
+            with c4:
+                metric_safe("Ganancia $", fmt_clp(r["ganancia_periodo"]))
+                st.markdown("📐 **Fórmula:** `V_final - V_inicial - flujos`")
+                st.markdown("📖 **Descripción:** Plata real ganada/perdida en el período.")
 
             st.divider()
 
-            # ── Todas las métricas comparadas ─────────────────
-            st.markdown("### 🧮 Todas las métricas")
-            metricas_df = pd.DataFrame([
-                {"Métrica": "TWR del período",
-                 "Valor": f"{r['twr_pct']:.2f}%",
-                 "Descripción": f"Time-Weighted Return del período ({r['dias']} días). Excluye timing de depósitos. Es el método que usa Racional."},
-                {"Métrica": "TWR anualizado",
-                 "Valor": f"{r['twr_anualizado_pct']:.2f}%" if r['twr_anualizado_pct'] is not None else "—",
-                 "Descripción": "TWR del período llevado a tasa anual. Si el período es corto, este número puede ser engañosamente extremo."},
-                {"Métrica": "MWR / XIRR",
-                 "Valor": f"{r['mwr_pct']:.2f}%" if r['mwr_pct'] is not None else "—",
-                 "Descripción": "Money-Weighted Return. IRR anualizada considerando timing de flujos. Refleja tu rentabilidad personal."},
-                {"Métrica": "Retorno simple período",
-                 "Valor": f"{r['retorno_simple_pct']:.2f}%",
-                 "Descripción": "(V_fin - V_ini - flujos) / V_ini. No anualizado. Sin TWR."},
-                {"Métrica": "Retorno cartera actual",
-                 "Valor": f"{r['retorno_cartera_pct']:.2f}%",
-                 "Descripción": "(valor - costo_base) / costo_base sobre posiciones actuales. No incluye ganancias realizadas de ventas pasadas."},
-                {"Métrica": "TWR desde inicio (compuesto)",
-                 "Valor": f"{r['twr_desde_inicio_pct']:.2f}%" if r['twr_desde_inicio_pct'] is not None else "—",
-                 "Descripción": f"(1 + {twr_pre:.1f}%) × (1 + TWR_período) - 1. Lo más cercano a lo que muestra Racional."},
-            ])
-            st.dataframe(metricas_df, hide_index=True, use_container_width=True)
+            # ── TODAS LAS MÉTRICAS ────────────────────────────
+            st.markdown("### 🧮 Todas las métricas, en detalle")
+            st.caption("Cada métrica responde una pregunta distinta. Lee la descripción para saber cuándo usarla.")
+            st.markdown("")
+
+            render_metric_block(
+                "1. TWR del período",
+                f"{r['twr_pct']:.2f}%",
+                "∏(1 + r_día) - 1   donde   r_día = (V_día - F_día) / V_día_anterior - 1",
+                f"Time-Weighted Return en {r['dias']} días. Excluye el efecto de cuándo metiste/sacaste "
+                f"plata. Mide solo cómo se movió el portafolio. Es el método headline de Racional."
+            )
+
+            render_metric_block(
+                "2. TWR anualizado",
+                f"{r['twr_anualizado_pct']:.2f}%" if r['twr_anualizado_pct'] is not None else "—",
+                "(1 + TWR_período) ^ (365 / días) - 1",
+                "TWR del período llevado a tasa anual. Si el período es muy corto (ej 20 días), el número "
+                "puede salir extremo — no creerlo literal porque extrapola a 365 días algo que pasó en 20."
+            )
+
+            render_metric_block(
+                "3. MWR / XIRR",
+                f"{r['mwr_pct']:.2f}%" if r['mwr_pct'] is not None else "—",
+                "TIR de flujos: Σ CF_i / (1+r)^(días_i/365) = 0",
+                "Money-Weighted Return. IRR anualizada considerando exactamente cuándo metiste cada peso. "
+                "Refleja TU rentabilidad personal (si timing fue bueno, MWR > TWR; si fue malo, MWR < TWR)."
+            )
+
+            render_metric_block(
+                "4. Retorno simple del período",
+                f"{r['retorno_simple_pct']:.2f}%",
+                "(V_final - V_inicial - flujos) / V_inicial",
+                "Retorno simple no anualizado, sin TWR. Más intuitivo de leer, pero distorsiona si "
+                "depositas mucha plata cerca del final del período (no aísla el timing)."
+            )
+
+            render_metric_block(
+                "5. Retorno cartera actual",
+                f"{r['retorno_cartera_pct']:.2f}%",
+                "(Σ cantidad × precio_actual - Σ cantidad × precio_compra) / Σ cantidad × precio_compra",
+                "Retorno solo sobre las posiciones que tienes HOY (snapshot vs hoy). No incluye ganancias "
+                "realizadas de ventas pasadas. Independiente del período seleccionado."
+            )
+
+            if r.get('twr_desde_inicio_pct') is not None:
+                render_metric_block(
+                    "6. TWR desde inicio (compuesto)",
+                    f"{r['twr_desde_inicio_pct']:.2f}%",
+                    f"(1 + {twr_pre:.1f}%) × (1 + {r['twr_pct']:.2f}%) - 1",
+                    f"Compone el TWR pre-snapshot (lo que Racional reportaba al 30/04/2026 = {twr_pre:.1f}%) "
+                    f"con el TWR calculado en el período. Lo más cercano al 'rentabilidad desde el inicio' de Racional."
+                )
 
     # ────────────────────────────────────────────────────────
     # TAB 1: CONSOLIDADO
