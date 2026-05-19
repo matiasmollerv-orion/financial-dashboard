@@ -255,60 +255,55 @@ def render():
 
                 if df_r.empty:
                     st.info("Sin datos para el período seleccionado.")
-                    fig2 = None
-
-                freq_map = {"Día": "D", "Semana": "W", "Mes": "ME", "Quarter": "QE", "Año": "YE"}
-
-                freq = freq_map[periodo]
-                period_key = {"D":"D","W":"W","ME":"M","QE":"Q","YE":"Y"}[freq]
-                df_r["_period"] = df_r["fecha"].dt.to_period(period_key)
-
-                df_r["_sort_key"] = df_r["_period"].apply(lambda p: p.start_time)
-
-                if periodo == "Día":
-                    df_r["periodo"] = df_r["fecha"].dt.strftime("%Y-%m-%d")
-                elif periodo == "Semana":
-                    df_r["periodo"] = df_r["_period"].apply(
-                        lambda p: f"{p.start_time.year}-W{p.start_time.strftime('%V')}"
-                    )
-                elif periodo == "Quarter":
-                    df_r["periodo"] = df_r["_period"].apply(
-                        lambda p: f"{p.year}-Q{p.quarter}"
-                    )
                 else:
-                    df_r["periodo"] = df_r["_period"].astype(str)
+                    freq_map = {"Día": "D", "Semana": "W", "Mes": "ME", "Quarter": "QE", "Año": "YE"}
+                    freq = freq_map[periodo]
+                    period_key = {"D":"D","W":"W","ME":"M","QE":"Q","YE":"Y"}[freq]
+                    df_r["_period"] = df_r["fecha"].dt.to_period(period_key)
+                    df_r["_sort_key"] = df_r["_period"].apply(lambda p: p.start_time)
 
-                grp = df_r.groupby(["_sort_key", "periodo", "mercado"])["monto_clp"].sum().reset_index()
-                grp = grp.sort_values("_sort_key")  # orden cronológico garantizado
+                    if periodo == "Día":
+                        df_r["periodo"] = df_r["fecha"].dt.strftime("%Y-%m-%d")
+                    elif periodo == "Semana":
+                        df_r["periodo"] = df_r["_period"].apply(
+                            lambda p: f"{p.start_time.year}-W{p.start_time.strftime('%V')}"
+                        )
+                    elif periodo == "Quarter":
+                        df_r["periodo"] = df_r["_period"].apply(
+                            lambda p: f"{p.year}-Q{p.quarter}"
+                        )
+                    else:
+                        df_r["periodo"] = df_r["_period"].astype(str)
 
-                # Orden de categorías para que Plotly respete el orden del DataFrame
-                orden_periodos = grp["periodo"].drop_duplicates().tolist()
+                    grp = df_r.groupby(["_sort_key", "periodo", "mercado"])["monto_clp"].sum().reset_index()
+                    grp = grp.sort_values("_sort_key")
+                    orden_periodos = grp["periodo"].drop_duplicates().tolist()
 
-                grp["monto_fmt"] = grp["monto_clp"].apply(fmt_clp)
-                fig2 = px.bar(
-                    grp,
-                    x="periodo", y="monto_clp",
-                    color="mercado",
-                    barmode="stack",
-                    category_orders={"periodo": orden_periodos},
-                    labels={"periodo": "", "monto_clp": "CLP", "mercado": "Mercado"},
-                    color_discrete_map={"nacional": "#4e79a7", "internacional": "#f28e2b"},
-                    custom_data=["monto_fmt"],
-                )
-                fig2.update_traces(
-                    hovertemplate="<b>%{x}</b><br>%{customdata[0]}<extra></extra>",
-                )
-                fig2.update_layout(
-                    paper_bgcolor="rgba(0,0,0,0)",
-                    plot_bgcolor="rgba(0,0,0,0)",
-                    font_color="#ccd6f6",
-                    margin=dict(t=10, b=10, l=10, r=10),
-                    height=320,
-                    xaxis=dict(showgrid=False, tickangle=-45),
-                    yaxis=dict(gridcolor="#2d3250"),
-                    legend=dict(orientation="h", y=1.1),
-                )
-                st.plotly_chart(fig2, use_container_width=True)
+                    grp["monto_fmt"] = grp["monto_clp"].apply(fmt_clp)
+                    fig2 = px.bar(
+                        grp,
+                        x="periodo", y="monto_clp",
+                        color="mercado",
+                        barmode="stack",
+                        category_orders={"periodo": orden_periodos},
+                        labels={"periodo": "", "monto_clp": "CLP", "mercado": "Mercado"},
+                        color_discrete_map={"nacional": "#4e79a7", "internacional": "#f28e2b"},
+                        custom_data=["monto_fmt"],
+                    )
+                    fig2.update_traces(
+                        hovertemplate="<b>%{x}</b><br>%{customdata[0]}<extra></extra>",
+                    )
+                    fig2.update_layout(
+                        paper_bgcolor="rgba(0,0,0,0)",
+                        plot_bgcolor="rgba(0,0,0,0)",
+                        font_color="#ccd6f6",
+                        margin=dict(t=10, b=10, l=10, r=10),
+                        height=320,
+                        xaxis=dict(showgrid=False, tickangle=-45),
+                        yaxis=dict(gridcolor="#2d3250"),
+                        legend=dict(orientation="h", y=1.1),
+                    )
+                    st.plotly_chart(fig2, use_container_width=True)
             else:
                 st.info("Sin historial de transacciones.")
 
