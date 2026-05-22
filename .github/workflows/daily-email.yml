@@ -1,0 +1,48 @@
+name: Daily Email Report
+
+on:
+  schedule:
+    # 11:30 UTC = 08:30 Chile (UTC-3 verano, UTC-4 invierno aprox)
+    # Lunes a viernes (mercado abierto)
+    - cron: '30 11 * * 1-5'
+    # Sábado: resumen de la semana
+    - cron: '30 13 * * 6'
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run (no enviar email, solo log)'
+        type: boolean
+        default: false
+
+jobs:
+  send_email:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Create .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
+          echo "GMAIL_USER=${{ secrets.GMAIL_USER }}" >> .env
+          echo "GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}" >> .env
+          echo "RECIPIENT_EMAIL=${{ secrets.RECIPIENT_EMAIL }}" >> .env
+
+      - name: Send daily email
+        run: |
+          if [ "${{ inputs.dry_run }}" = "true" ]; then
+            python -m intelligence.report_builder --dry-run
+          else
+            python -m intelligence.report_builder
+          fi
