@@ -202,121 +202,110 @@ def render():
         if not r:
             st.warning("No se pudo calcular. Reintenta más tarde.")
         else:
-            # Helper: muestra una métrica con valor + fórmula + descripción claramente separados
-            def render_metric_block(titulo, valor, formula, descripcion):
-                metric_safe(titulo, valor)
-                st.markdown(f"📐 **Fórmula:** `{formula}`")
-                st.markdown(f"📖 **Descripción:** {descripcion}")
-                st.markdown("")  # spacing
-
-            # ── HEADLINE ──────────────────────────────────────
-            st.markdown("### 🎯 Headline")
-            c1, c2, c3 = st.columns(3)
-            with c1:
-                if r.get('twr_desde_inicio_pct') is not None:
-                    render_metric_block(
-                        "TWR desde inicio",
-                        f"{r['twr_desde_inicio_pct']:.2f}%",
-                        f"(1 + {twr_pre:.1f}%) × (1 + TWR_período) - 1",
-                        "Compone el TWR pre-snapshot con el TWR del período. Lo más cercano al número que muestra Racional."
-                    )
-                else:
-                    render_metric_block(
-                        "TWR del período",
-                        f"{r['twr_pct']:.2f}%",
-                        "∏(1 + r_día) - 1",
-                        "Time-Weighted Return del período seleccionado."
-                    )
-            with c2:
-                render_metric_block(
-                    "TWR del período",
-                    f"{r['twr_pct']:.2f}%",
-                    "∏(1 + r_día) - 1   donde   r_día = (V_día - F_día) / V_día_anterior - 1",
-                    "Excluye timing de depósitos. Es el método headline que usa Racional."
-                )
-            with c3:
-                render_metric_block(
-                    "Retorno cartera actual",
-                    f"{r['retorno_cartera_pct']:.2f}%",
-                    "(valor_actual - costo_base) / costo_base",
-                    "Retorno simple sobre las posiciones que tienes HOY. Independiente del período seleccionado."
-                )
+            # Resumen rápido del período
+            st.markdown(f"#### 📅 Período: {start_date} → {end_date} ({r['dias']} días)")
+            cs1, cs2, cs3, cs4 = st.columns(4)
+            with cs1: metric_safe("Valor inicial", fmt_clp(r["valor_inicial"]))
+            with cs2: metric_safe("Valor final", fmt_clp(r["valor_final"]))
+            with cs3: metric_safe("Flujos netos", fmt_clp(r["flujos_netos"]))
+            with cs4: metric_safe("Ganancia $", fmt_clp(r["ganancia_periodo"]))
 
             st.divider()
 
-            # ── PERÍODO ───────────────────────────────────────
-            st.markdown(f"### 📅 Período: {start_date} → {end_date} ({r['dias']} días)")
-            c1, c2, c3, c4 = st.columns(4)
-            with c1:
-                metric_safe("Valor inicial", fmt_clp(r["valor_inicial"]))
-                st.markdown("📖 **Descripción:** Valor de la cartera al inicio del período.")
-            with c2:
-                metric_safe("Valor final", fmt_clp(r["valor_final"]))
-                st.markdown("📖 **Descripción:** Valor de la cartera al final del período.")
-            with c3:
-                metric_safe("Flujos netos", fmt_clp(r["flujos_netos"]))
-                st.markdown("📐 **Fórmula:** `Σ compras - Σ ventas`")
-                st.markdown("📖 **Descripción:** Cuánto pusiste/sacaste en CLP durante el período.")
-            with c4:
-                metric_safe("Ganancia $", fmt_clp(r["ganancia_periodo"]))
-                st.markdown("📐 **Fórmula:** `V_final - V_inicial - flujos`")
-                st.markdown("📖 **Descripción:** Plata real ganada/perdida en el período.")
-
-            st.divider()
-
-            # ── TODAS LAS MÉTRICAS ────────────────────────────
-            st.markdown("### 🧮 Todas las métricas, en detalle")
-            st.caption("Cada métrica responde una pregunta distinta. Lee la descripción para saber cuándo usarla.")
+            # ── LAS 6 MÉTRICAS, TODAS A LA VEZ ───────────────
+            st.markdown("### 🧮 Las 6 formas de medir la rentabilidad")
+            st.caption("Cada métrica responde una pregunta distinta. Léelas todas para entender las diferencias.")
             st.markdown("")
 
-            render_metric_block(
-                "1. TWR del período",
-                f"{r['twr_pct']:.2f}%",
-                "∏(1 + r_día) - 1   donde   r_día = (V_día - F_día) / V_día_anterior - 1",
-                f"Time-Weighted Return en {r['dias']} días. Excluye el efecto de cuándo metiste/sacaste "
-                f"plata. Mide solo cómo se movió el portafolio. Es el método headline de Racional."
-            )
-
-            render_metric_block(
-                "2. TWR anualizado",
-                f"{r['twr_anualizado_pct']:.2f}%" if r['twr_anualizado_pct'] is not None else "—",
-                "(1 + TWR_período) ^ (365 / días) - 1",
-                "TWR del período llevado a tasa anual. Si el período es muy corto (ej 20 días), el número "
-                "puede salir extremo — no creerlo literal porque extrapola a 365 días algo que pasó en 20."
-            )
-
-            render_metric_block(
-                "3. MWR / XIRR",
-                f"{r['mwr_pct']:.2f}%" if r['mwr_pct'] is not None else "—",
-                "TIR de flujos: Σ CF_i / (1+r)^(días_i/365) = 0",
-                "Money-Weighted Return. IRR anualizada considerando exactamente cuándo metiste cada peso. "
-                "Refleja TU rentabilidad personal (si timing fue bueno, MWR > TWR; si fue malo, MWR < TWR)."
-            )
-
-            render_metric_block(
-                "4. Retorno simple del período",
-                f"{r['retorno_simple_pct']:.2f}%",
-                "(V_final - V_inicial - flujos) / V_inicial",
-                "Retorno simple no anualizado, sin TWR. Más intuitivo de leer, pero distorsiona si "
-                "depositas mucha plata cerca del final del período (no aísla el timing)."
-            )
-
-            render_metric_block(
-                "5. Retorno cartera actual",
-                f"{r['retorno_cartera_pct']:.2f}%",
-                "(Σ cantidad × precio_actual - Σ cantidad × precio_compra) / Σ cantidad × precio_compra",
-                "Retorno solo sobre las posiciones que tienes HOY (snapshot vs hoy). No incluye ganancias "
-                "realizadas de ventas pasadas. Independiente del período seleccionado."
-            )
+            METRICAS = [
+                {
+                    "id": "1",
+                    "titulo": "TWR del período",
+                    "valor": f"{r['twr_pct']:.2f}%",
+                    "formula": "∏(1 + r_día) − 1,   donde   r_día = (V_día − F_día) / V_día_anterior − 1",
+                    "descripcion": (
+                        f"**Time-Weighted Return** en {r['dias']} días. Excluye el efecto de cuándo metiste/"
+                        f"sacaste plata. Mide solo cómo se movió el portafolio. "
+                        f"**Es el método headline que usa Racional.**"
+                    ),
+                },
+                {
+                    "id": "2",
+                    "titulo": "TWR anualizado",
+                    "valor": f"{r['twr_anualizado_pct']:.2f}%" if r['twr_anualizado_pct'] is not None else "—",
+                    "formula": "(1 + TWR_período) ^ (365 / días) − 1",
+                    "descripcion": (
+                        "TWR del período llevado a **tasa anual**. Si el período es muy corto (ej 20 días), "
+                        "el número puede salir extremo — no creerlo literal porque extrapola a 365 días algo "
+                        "que pasó en pocos días."
+                    ),
+                },
+                {
+                    "id": "3",
+                    "titulo": "MWR / XIRR",
+                    "valor": f"{r['mwr_pct']:.2f}%" if r['mwr_pct'] is not None else "—",
+                    "formula": "TIR de flujos:  Σ CF_i / (1+r)^(días_i / 365) = 0",
+                    "descripcion": (
+                        "**Money-Weighted Return**. IRR anualizada considerando exactamente cuándo metiste cada "
+                        "peso. Refleja TU rentabilidad personal: si tu timing de compras fue bueno, MWR > TWR; "
+                        "si fue malo, MWR < TWR."
+                    ),
+                },
+                {
+                    "id": "4",
+                    "titulo": "Retorno simple del período",
+                    "valor": f"{r['retorno_simple_pct']:.2f}%",
+                    "formula": "(V_final − V_inicial − flujos) / V_inicial",
+                    "descripcion": (
+                        "Retorno simple **no anualizado**, sin TWR. Más intuitivo de leer, pero distorsiona si "
+                        "depositas mucha plata cerca del final del período (no aísla el timing)."
+                    ),
+                },
+                {
+                    "id": "5",
+                    "titulo": "Retorno cartera actual",
+                    "valor": f"{r['retorno_cartera_pct']:.2f}%",
+                    "formula": "(Σ cantidad × precio_actual − Σ cantidad × precio_compra) / Σ cantidad × precio_compra",
+                    "descripcion": (
+                        "Retorno solo sobre las posiciones que tienes **HOY** (snapshot vs hoy). No incluye "
+                        "ganancias realizadas de ventas pasadas. **Independiente del período seleccionado.**"
+                    ),
+                },
+            ]
 
             if r.get('twr_desde_inicio_pct') is not None:
-                render_metric_block(
-                    "6. TWR desde inicio (compuesto)",
-                    f"{r['twr_desde_inicio_pct']:.2f}%",
-                    f"(1 + {twr_pre:.1f}%) × (1 + {r['twr_pct']:.2f}%) - 1",
-                    f"Compone el TWR pre-snapshot (lo que Racional reportaba al 30/04/2026 = {twr_pre:.1f}%) "
-                    f"con el TWR calculado en el período. Lo más cercano al 'rentabilidad desde el inicio' de Racional."
-                )
+                METRICAS.append({
+                    "id": "6",
+                    "titulo": "TWR desde inicio (compuesto)",
+                    "valor": f"{r['twr_desde_inicio_pct']:.2f}%",
+                    "formula": f"(1 + {twr_pre:.1f}%) × (1 + {r['twr_pct']:.2f}%) − 1",
+                    "descripcion": (
+                        f"Compone el TWR pre-snapshot (lo que Racional reportaba al 30/04/2026 = {twr_pre:.1f}%) "
+                        f"con el TWR calculado en el período. **Lo más cercano al 'rentabilidad desde el inicio' "
+                        f"de Racional.**"
+                    ),
+                })
+
+            # Render en grilla de 2 columnas
+            for i in range(0, len(METRICAS), 2):
+                col_a, col_b = st.columns(2)
+                for col, m in zip([col_a, col_b], METRICAS[i:i+2]):
+                    with col:
+                        st.markdown(
+                            f"""
+<div style="background:#1e2130; padding:16px 18px; border-radius:10px; border-left: 4px solid #4e79a7; margin-bottom:14px;">
+  <div style="color:#8892b0; font-size:0.85rem; margin-bottom:4px;">#{m['id']} · {m['titulo']}</div>
+  <div style="color:#ccd6f6; font-size:1.8rem; font-weight:700; margin-bottom:10px;">{m['valor']}</div>
+  <div style="color:#a0aec0; font-size:0.85rem; margin-bottom:6px;">
+    📐 <strong>Fórmula:</strong> <code style="background:#0e1117; padding:2px 6px; border-radius:4px;">{m['formula']}</code>
+  </div>
+  <div style="color:#a0aec0; font-size:0.85rem;">
+    📖 <strong>Descripción:</strong> {m['descripcion']}
+  </div>
+</div>
+""",
+                            unsafe_allow_html=True,
+                        )
 
     # ────────────────────────────────────────────────────────
     # TAB 1: CONSOLIDADO

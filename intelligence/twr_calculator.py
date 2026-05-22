@@ -142,9 +142,15 @@ def compute_twr(snapshot_date: str = SNAPSHOT_DATE,
     dates = pd.date_range(snapshot_date, end_date, freq="D")
 
     # 5. Construir DataFrame de cantidades diarias por ticker
-    qty_df = pd.DataFrame(0.0, index=dates, columns=all_tickers)
-    for tk in all_tickers:
-        qty_df[tk] = meta[tk]["cantidad_base"]
+    # IMPORTANTE: dtype=float64 explícito + astype(float) por columna para evitar
+    # que pandas infiera int64 cuando cantidad_base es entero (ej. BCI=30)
+    qty_df = pd.DataFrame(
+        {tk: np.full(len(dates), float(meta[tk]["cantidad_base"]), dtype=np.float64)
+         for tk in all_tickers},
+        index=dates,
+    )
+    # Doble asegurar
+    qty_df = qty_df.astype(np.float64)
 
     if not rac.empty:
         for _, row in rac.iterrows():
@@ -153,9 +159,9 @@ def compute_twr(snapshot_date: str = SNAPSHOT_DATE,
                 continue
             if row["mercado"] == "nacional":
                 continue  # nacional son aportes agregados, no afectan cantidades unitarias en base
-            delta = row["acciones"] if row["tipo"] == "compra" else -row["acciones"]
+            delta = float(row["acciones"]) if row["tipo"] == "compra" else -float(row["acciones"])
             mask = qty_df.index >= row["fecha"].normalize()
-            qty_df.loc[mask, tk] += delta
+            qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + delta
 
     if not buda.empty:
         for _, row in buda.iterrows():
@@ -163,7 +169,7 @@ def compute_twr(snapshot_date: str = SNAPSHOT_DATE,
             if tk not in qty_df.columns:
                 continue
             mask = qty_df.index >= row["fecha"].normalize()
-            qty_df.loc[mask, tk] += row["cantidad"]
+            qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + float(row["cantidad"])
 
     # 6. Descargar precios históricos
     yf_map = {tk: yf_ticker_for(tk, meta[tk]["mercado"]) for tk in all_tickers}
