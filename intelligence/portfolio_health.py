@@ -328,13 +328,31 @@ def check_pe_caro(df: pd.DataFrame) -> list[dict]:
 
 
 # ── INSERTAR EN SUPABASE ─────────────────────────────────────
-def save_alerts(alerts: list[dict]) -> dict:
-    """Inserta alertas en portfolio_alerts. Idempotente por día via UNIQUE INDEX."""
+def save_alerts(alerts: list) -> dict:
+    """
+    Inserta alertas en portfolio_alerts.
+    ANTES de insertar: desactiva alertas activas previas con misma (categoria, activo)
+    para que no haya duplicados visibles en el email/dashboard.
+    """
     if not alerts:
         return {"insertadas": 0, "duplicadas": 0, "errores": 0}
 
     sb = get_client()
     ins = dup = err = 0
+
+    # 1. Desactivar TODAS las alertas activas previas que vamos a regenerar
+    pairs = set((a["categoria"], a["activo"]) for a in alerts)
+    for cat, activo in pairs:
+        try:
+            sb.table("portfolio_alerts").update({"activo_alerta": False}) \
+              .eq("activo_alerta", True) \
+              .eq("categoria", cat) \
+              .eq("activo", activo) \
+              .execute()
+        except Exception:
+            pass
+
+    # 2. Insertar las nuevas
     for a in alerts:
         try:
             sb.table("portfolio_alerts").insert(a).execute()
@@ -342,7 +360,19 @@ def save_alerts(alerts: list[dict]) -> dict:
         except Exception as e:
             msg = str(e).lower()
             if "duplicate" in msg or "unique" in msg or "uniq_alert_per_day" in msg:
-                dup += 1
+                # Si ya hay una de hoy con misma key, la actualizamos como activa
+                try:
+                    sb.table("portfolio_alerts").update({
+                        "activo_alerta": True,
+                        "mensaje": a.get("mensaje"),
+                        "metricas": a.get("metricas"),
+                        "sugerencia": a.get("sugerencia"),
+                        "severidad": a.get("severidad"),
+                        "titulo": a.get("titulo"),
+                    }).eq("categoria", a["categoria"]).eq("activo", a["activo"]).execute()
+                    dup += 1
+                except Exception:
+                    err += 1
             else:
                 err += 1
                 if err <= 3:

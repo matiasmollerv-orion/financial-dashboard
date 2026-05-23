@@ -78,15 +78,22 @@ def _safe_query(fn):
 
 @_safe_query
 def load_active_alerts() -> pd.DataFrame:
+    """Carga alertas activas y deduplica por (categoria, activo) tomando la más reciente."""
     sb = get_client()
     r = (sb.table("portfolio_alerts")
            .select("*")
            .eq("activo_alerta", True)
            .neq("categoria", "daily_brief")
-           .order("severidad")
-           .limit(200)  # alto: queremos verlas todas en el email
+           .order("fecha_alerta", desc=True)
+           .limit(500)
            .execute())
-    return pd.DataFrame(r.data)
+    df = pd.DataFrame(r.data)
+    if df.empty:
+        return df
+    # Dedupe: una alerta por (categoria, activo) — la más reciente
+    df = df.sort_values("fecha_alerta", ascending=False)
+    df = df.drop_duplicates(subset=["categoria", "activo", "titulo"], keep="first")
+    return df
 
 
 @_safe_query
