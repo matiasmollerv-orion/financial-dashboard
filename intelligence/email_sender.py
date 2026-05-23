@@ -20,12 +20,13 @@
 import os
 import smtplib
 import ssl
+from typing import Optional, Tuple
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.utils import formataddr
 
 
-def _get_creds() -> tuple[str, str, str]:
+def _get_creds() -> Tuple[str, str, str]:
     """Lee credenciales desde env. Retorna (user, password, recipient)."""
     user = os.getenv("GMAIL_USER", "").strip()
     pwd  = os.getenv("GMAIL_APP_PASSWORD", "").strip().replace(" ", "")
@@ -43,7 +44,7 @@ def send_email(
     subject: str,
     html_body: str,
     text_body: str = "",
-    recipient: str | None = None,
+    recipient: Optional[str] = None,
     sender_name: str = "Financial Dashboard",
     dry_run: bool = False,
 ) -> bool:

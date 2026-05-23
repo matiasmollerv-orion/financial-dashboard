@@ -148,7 +148,21 @@ def load_portfolio_snapshot() -> dict:
     df["costo_clp"] = df.apply(
         lambda r: r["costo_usd"] if r.get("moneda") == "CLP" else r["costo_usd"] * USD_CLP, axis=1
     )
-    df["retorno_pct"] = ((df["precio_actual"] - df["precio_compra"]) / df["precio_compra"] * 100).round(2)
+    # Calcular retorno: SOLO posiciones con precio_compra válido (>0)
+    # ARTY, BITO, EZU, LIT, QQQ, SGML tienen precio_compra=0 (datos faltantes en snapshot)
+    # → no se les puede calcular retorno, los excluimos del ranking
+    import numpy as np
+    df["retorno_pct"] = np.where(
+        df["precio_compra"] > 0,
+        ((df["precio_actual"] - df["precio_compra"]) / df["precio_compra"] * 100).round(2),
+        np.nan,
+    )
+
+    # Filtrar solo posiciones con valor significativo (>$100k CLP) y retorno válido
+    df_rankable = df[
+        df["retorno_pct"].notna() &
+        (df["valor_clp"] > 100_000)
+    ].copy()
 
     total = df["valor_clp"].sum()
     total_costo = df["costo_clp"].sum()
@@ -161,8 +175,8 @@ def load_portfolio_snapshot() -> dict:
         "ganancia":       ganancia,
         "retorno_pct":    ret_pct,
         "n_positions":    len(df),
-        "top_gainers":    df.nlargest(5, "retorno_pct")[["ticker", "retorno_pct", "valor_clp"]].to_dict("records"),
-        "top_losers":     df.nsmallest(5, "retorno_pct")[["ticker", "retorno_pct", "valor_clp"]].to_dict("records"),
+        "top_gainers":    df_rankable.nlargest(5, "retorno_pct")[["ticker", "retorno_pct", "valor_clp"]].to_dict("records"),
+        "top_losers":     df_rankable.nsmallest(5, "retorno_pct")[["ticker", "retorno_pct", "valor_clp"]].to_dict("records"),
     }
 
 
