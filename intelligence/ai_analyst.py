@@ -14,6 +14,13 @@ warnings.filterwarnings("ignore")
 
 sys.path.insert(0, ".")
 
+# Cargar .env automáticamente (override=True por si shell tiene vars vacías)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+except ImportError:
+    pass
+
 import pandas as pd
 from database.supabase_client import get_client
 
@@ -89,7 +96,7 @@ Responde SIEMPRE en JSON válido, con esta estructura exacta:
 """
 
 
-def analyze_news_item(client, noticia: dict, portfolio_context: str) -> dict | None:
+def analyze_news_item(client, noticia: dict, portfolio_context: str):
     """Llama a Claude con una noticia y retorna análisis JSON."""
     user_msg = f"""## CARTERA DEL CLIENTE
 {portfolio_context}

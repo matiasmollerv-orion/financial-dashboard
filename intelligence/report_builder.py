@@ -17,6 +17,14 @@ import warnings
 warnings.filterwarnings("ignore")
 
 sys.path.insert(0, ".")
+
+# Cargar .env (override=True para evitar problemas de env vars vacías)
+try:
+    from dotenv import load_dotenv
+    load_dotenv(override=True)
+except ImportError:
+    pass
+
 import pandas as pd
 from database.supabase_client import get_client
 
@@ -76,7 +84,7 @@ def load_active_alerts() -> pd.DataFrame:
            .eq("activo_alerta", True)
            .neq("categoria", "daily_brief")
            .order("severidad")
-           .limit(50)
+           .limit(200)  # alto: queremos verlas todas en el email
            .execute())
     return pd.DataFrame(r.data)
 
@@ -94,7 +102,7 @@ def load_daily_brief() -> str:
 
 
 @_safe_query
-def load_intel_news(hours: int = 24, max_total: int = 15) -> pd.DataFrame:
+def load_intel_news(hours: int = 24, max_total: int = 100) -> pd.DataFrame:
     sb = get_client()
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     intel = (sb.table("market_intelligence").select("*")
@@ -120,7 +128,7 @@ def load_intel_news(hours: int = 24, max_total: int = 15) -> pd.DataFrame:
 
 
 @_safe_query
-def load_raw_news(hours: int = 24, limit: int = 25) -> pd.DataFrame:
+def load_raw_news(hours: int = 24, limit: int = 100) -> pd.DataFrame:
     sb = get_client()
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=hours)).isoformat()
     r = (sb.table("market_news").select("*")
@@ -209,38 +217,99 @@ def _section(title: str, content: str) -> str:
     """
 
 
+def _severity_score(sev: str) -> int:
+    """Mapea severidad a score de 1-100 para mostrar visualmente."""
+    return {"critica": 95, "alta": 75, "media": 50, "baja": 30, "info": 15}.get((sev or "").lower(), 0)
+
+
+def _alert_card_html(row, color) -> str:
+    sev = (row.get("severidad") or "info").lower()
+    score = _severity_score(sev)
+    activo = row.get("activo") or "—"
+    score_bar = "█" * (score // 10) + "░" * (10 - score // 10)
+    return f"""
+    <div style="background:{COLORS['card']}; padding:12px 14px; border-radius:8px; border-left:4px solid {color}; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap; gap:8px;">
+        <strong style="color:{COLORS['text']}; font-size:14px; flex:1;">{row.get('titulo','')}</strong>
+        <div style="text-align:right;">
+          <span style="background:{color}22; color:{color}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">
+            {sev.upper()} · {score}/100
+          </span>
+        </div>
+      </div>
+      <div style="color:{COLORS['text_dim']}; font-size:11px; font-family:monospace; margin-top:2px;">
+        {score_bar}
+      </div>
+      <div style="color:{COLORS['text_dim']}; font-size:13px; margin-top:6px;">
+        <strong>{activo}</strong> · {row.get('mensaje','')}
+      </div>
+      <div style="color:{COLORS['text_dim']}; font-size:12px; margin-top:6px; font-style:italic;">
+        💡 {row.get('sugerencia','')}
+      </div>
+    </div>"""
+
+
 def _build_alerts_html(df: pd.DataFrame) -> str:
     if df.empty:
         return f"<p style='color:{COLORS['text_dim']};'>✅ Sin alertas activas. Cartera en buen estado.</p>"
 
-    # Agrupar por severidad
-    counts = df["severidad"].value_counts()
-    summary = " · ".join([f"<strong style='color:{SEV_COLOR.get(s,'#888')};'>{int(c)} {s}</strong>"
-                          for s, c in counts.items()])
+    # Ordenar internamente por severidad (critica → info)
+    sev_order = {"critica": 0, "alta": 1, "media": 2, "baja": 3, "info": 4}
+    df = df.copy()
+    df["_ord"] = df["severidad"].map(sev_order).fillna(99)
+    df = df.sort_values("_ord")
 
-    cards = []
-    for _, row in df.head(15).iterrows():
-        sev = (row.get("severidad") or "info").lower()
-        color = SEV_COLOR.get(sev, "#888")
-        cat = (row.get("categoria") or "").upper()
-        activo = row.get("activo") or "—"
-        cards.append(f"""
-        <div style="background:{COLORS['card']}; padding:12px 14px; border-radius:8px; border-left:4px solid {color}; margin-bottom:10px;">
-          <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap;">
-            <strong style="color:{COLORS['text']}; font-size:14px;">{row.get('titulo','')}</strong>
-            <span style="background:{color}22; color:{color}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">
-              {sev.upper()} · {cat}
-            </span>
-          </div>
-          <div style="color:{COLORS['text_dim']}; font-size:13px; margin-top:6px;">
-            <strong>{activo}</strong> · {row.get('mensaje','')}
-          </div>
-          <div style="color:{COLORS['text_dim']}; font-size:12px; margin-top:6px; font-style:italic;">
-            💡 {row.get('sugerencia','')}
-          </div>
+    # Resumen por severidad
+    counts_sev = df["severidad"].value_counts()
+    summary = " · ".join([
+        f"<strong style='color:{SEV_COLOR.get(s,'#888')};'>{int(c)} {s}</strong>"
+        for s, c in counts_sev.items()
+    ])
+
+    # Agrupar por CATEGORÍA y renderizar cada grupo
+    CAT_LABELS = {
+        "concentracion":   ("🎯", "Concentración"),
+        "valuacion":       ("💰", "Valuación / P/E"),
+        "drawdown":        ("📉", "Drawdowns"),
+        "volatilidad":     ("⚡", "Volatilidad anormal"),
+        "stale":           ("⏰", "Datos desactualizados"),
+        "cambiaria":       ("💱", "Exposición cambiaria"),
+        "liquidez":        ("💧", "Liquidez"),
+        "crypto":          ("🪙", "Exposición cripto"),
+        "salud_global":    ("🏥", "Salud global"),
+    }
+
+    categorias_orden = ["concentracion", "valuacion", "cambiaria", "crypto",
+                        "drawdown", "volatilidad", "stale", "liquidez", "salud_global"]
+
+    blocks = []
+    for cat in categorias_orden:
+        df_cat = df[df["categoria"] == cat]
+        if df_cat.empty:
+            continue
+        icon, label = CAT_LABELS.get(cat, ("📌", cat.upper()))
+        cards = "\n".join([_alert_card_html(row, SEV_COLOR.get(row["severidad"].lower(), "#888"))
+                           for _, row in df_cat.iterrows()])
+        blocks.append(f"""
+        <div style="margin: 18px 0 14px 0;">
+          <h3 style="color:{COLORS['text']}; font-size:14px; margin:0 0 8px 0;">
+            {icon} {label} <span style="color:{COLORS['text_dim']}; font-weight:normal;">({len(df_cat)})</span>
+          </h3>
+          {cards}
         </div>""")
 
-    return f"<p style='color:{COLORS['text_dim']}; margin-bottom:14px;'>{summary}</p>" + "\n".join(cards)
+    # Otras categorías no mapeadas
+    df_other = df[~df["categoria"].isin(categorias_orden)]
+    if not df_other.empty:
+        cards = "\n".join([_alert_card_html(row, SEV_COLOR.get(row["severidad"].lower(), "#888"))
+                           for _, row in df_other.iterrows()])
+        blocks.append(f"""
+        <div style="margin: 18px 0 14px 0;">
+          <h3 style="color:{COLORS['text']}; font-size:14px; margin:0 0 8px 0;">📌 Otras ({len(df_other)})</h3>
+          {cards}
+        </div>""")
+
+    return f"<p style='color:{COLORS['text_dim']}; margin-bottom:14px;'>Total: <strong>{len(df)}</strong> alertas · {summary}</p>" + "\n".join(blocks)
 
 
 def _build_brief_html(brief: str) -> str:
@@ -259,74 +328,141 @@ def _build_brief_html(brief: str) -> str:
     </div>"""
 
 
+def _news_card_intel(row) -> str:
+    """Card de una noticia con análisis AI."""
+    tipo = (row.get("tipo") or "neutro").lower()
+    color = TIPO_COLOR.get(tipo, "#888")
+    rel = row.get("relevancia_pct") or 0
+    titulo = row.get("titulo") or "(sin título)"
+    url = row.get("url") or "#"
+    resumen = row.get("resumen_esp") or ""
+    accion = row.get("accion_sugerida") or ""
+    confianza = (row.get("confianza_senal") or "").lower()
+    fecha_str = ""
+    try:
+        fecha_str = pd.to_datetime(row["fecha_noticia"]).strftime("%d/%m %H:%M")
+    except Exception:
+        pass
+
+    tickers = row.get("tickers_afectados") or []
+    if isinstance(tickers, str):
+        tickers = tickers.strip("{}").split(",")
+    tickers_str = ", ".join(t.strip() for t in tickers if t and t.strip())
+
+    rel_bar = "█" * (int(rel) // 10) + "░" * (10 - int(rel) // 10)
+    conf_icon = {"alta": "🟢", "media": "🟡", "baja": "🟠", "ruido": "⬛"}.get(confianza, "⚪")
+
+    return f"""
+    <div style="background:{COLORS['card']}; padding:12px 14px; border-radius:8px; border-left:4px solid {color}; margin-bottom:8px;">
+      <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap; gap:8px;">
+        <a href="{url}" style="color:{COLORS['text']}; text-decoration:none; font-size:14px; font-weight:600; flex:1;">
+          {conf_icon} {titulo}
+        </a>
+        <span style="background:{color}22; color:{color}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600;">
+          {tipo.upper()} · {rel}/100
+        </span>
+      </div>
+      <div style="color:{COLORS['text_dim']}; font-size:11px; font-family:monospace; margin-top:2px;">
+        {rel_bar}
+      </div>
+      <div style="color:{COLORS['text_dim']}; font-size:12px; margin-top:3px;">
+        {row.get('fuente','')} · {fecha_str}{(' · ' + tickers_str) if tickers_str else ''}
+      </div>
+      <div style="color:{COLORS['text_dim']}; font-size:13px; margin-top:8px;">
+        {resumen}
+      </div>
+      {f'<div style="color:{COLORS["yellow"]}; font-size:12px; margin-top:6px; font-weight:500;">🎯 {accion}</div>' if accion else ''}
+    </div>"""
+
+
+def _news_card_raw(row) -> str:
+    """Card de una noticia sin análisis AI (cruda)."""
+    rel = row.get("relevancia_preliminar") or 0
+    titulo = row.get("titulo") or "(sin título)"
+    url = row.get("url") or "#"
+    resumen = (row.get("resumen") or "")[:220]
+    fecha_str = ""
+    try:
+        fecha_str = pd.to_datetime(row["fecha_noticia"]).strftime("%d/%m %H:%M")
+    except Exception:
+        pass
+    tickers = row.get("tickers_mencionados") or []
+    if isinstance(tickers, str):
+        tickers = tickers.strip("{}").split(",")
+    tickers_str = ", ".join(t.strip() for t in tickers if t and t.strip())
+    rel_bar = "█" * (int(rel) // 10) + "░" * (10 - int(rel) // 10)
+    color = COLORS["primary"]
+
+    return f"""
+    <div style="background:{COLORS['card']}; padding:12px 14px; border-radius:8px; border-left:3px solid {color}; margin-bottom:8px;">
+      <a href="{url}" style="color:{COLORS['text']}; text-decoration:none; font-size:14px; font-weight:600;">
+        {titulo}
+      </a>
+      <div style="color:{COLORS['text_dim']}; font-size:11px; font-family:monospace; margin-top:3px;">
+        relev: {rel}/100 {rel_bar}
+      </div>
+      <div style="color:{COLORS['text_dim']}; font-size:12px; margin-top:3px;">
+        {row.get('fuente','')} · {fecha_str}{(' · ' + tickers_str) if tickers_str else ''}
+      </div>
+      <div style="color:{COLORS['text_dim']}; font-size:13px; margin-top:6px;">
+        {resumen}
+      </div>
+    </div>"""
+
+
 def _build_news_html(df_intel: pd.DataFrame, df_raw: pd.DataFrame) -> str:
-    """Render de noticias. Prefiere las analizadas por AI; cae a crudas."""
-    if df_intel is None or df_intel.empty:
-        if df_raw is None or df_raw.empty:
-            return f"<p style='color:{COLORS['text_dim']};'>Sin noticias relevantes en las últimas 24 horas.</p>"
-        # Fallback crudas
-        items = []
-        for _, row in df_raw.head(10).iterrows():
-            fecha_str = ""
-            try:
-                fecha_str = pd.to_datetime(row["fecha_noticia"]).strftime("%d/%m %H:%M")
-            except Exception:
-                pass
-            items.append(f"""
-            <div style="border-bottom:1px solid {COLORS['border']}; padding:10px 0;">
-              <a href="{row.get('url','#')}" style="color:{COLORS['text']}; text-decoration:none; font-size:14px; font-weight:600;">
-                {row.get('titulo','')}
-              </a>
-              <div style="color:{COLORS['text_dim']}; font-size:12px; margin-top:3px;">
-                {row.get('fuente','')} · {fecha_str} · relev {row.get('relevancia_preliminar',0)}
-              </div>
-              <div style="color:{COLORS['text_dim']}; font-size:13px; margin-top:6px;">
-                {(row.get('resumen') or '')[:200]}
-              </div>
+    """Noticias agrupadas por tipo (riesgo/oportunidad/neutro) con AI;
+       o por categoría preliminar cuando no hay AI."""
+
+    has_intel = df_intel is not None and not df_intel.empty
+
+    if has_intel:
+        # Ordenar internamente
+        df = df_intel.copy().sort_values("relevancia_pct", ascending=False)
+        blocks = []
+        for tipo, label, icon in [
+            ("riesgo",      "Riesgos",      "🔴"),
+            ("oportunidad", "Oportunidades","🟢"),
+            ("neutro",      "Informativos", "⚪"),
+        ]:
+            df_t = df[df["tipo"].str.lower() == tipo]
+            if df_t.empty:
+                continue
+            cards = "\n".join([_news_card_intel(row) for _, row in df_t.iterrows()])
+            blocks.append(f"""
+            <div style="margin: 16px 0 14px 0;">
+              <h3 style="color:{COLORS['text']}; font-size:14px; margin:0 0 8px 0;">
+                {icon} {label} <span style="color:{COLORS['text_dim']}; font-weight:normal;">({len(df_t)})</span>
+              </h3>
+              {cards}
             </div>""")
-        return "\n".join(items)
+        return "".join(blocks)
 
-    # Con análisis AI
-    items = []
-    for _, row in df_intel.head(12).iterrows():
-        tipo = (row.get("tipo") or "neutro").lower()
-        color = TIPO_COLOR.get(tipo, "#888")
-        rel = row.get("relevancia_pct") or 0
-        titulo = row.get("titulo") or "(sin título)"
-        url = row.get("url") or "#"
-        resumen = row.get("resumen_esp") or ""
-        accion = row.get("accion_sugerida") or ""
-        fecha_str = ""
-        try:
-            fecha_str = pd.to_datetime(row["fecha_noticia"]).strftime("%d/%m %H:%M")
-        except Exception:
-            pass
+    # Fallback noticias crudas
+    if df_raw is None or df_raw.empty:
+        return f"<p style='color:{COLORS['text_dim']};'>Sin noticias relevantes en las últimas 24 horas.</p>"
 
-        tickers = row.get("tickers_afectados") or []
-        if isinstance(tickers, str):
-            tickers = tickers.strip("{}").split(",")
-        tickers_str = ", ".join(t.strip() for t in tickers if t and t.strip())
+    df = df_raw.copy().sort_values("relevancia_preliminar", ascending=False)
 
-        items.append(f"""
-        <div style="background:{COLORS['card']}; padding:12px 14px; border-radius:8px; border-left:4px solid {color}; margin-bottom:10px;">
-          <div style="display:flex; justify-content:space-between; align-items:start; flex-wrap:wrap;">
-            <a href="{url}" style="color:{COLORS['text']}; text-decoration:none; font-size:14px; font-weight:600; flex:1;">
-              {titulo}
-            </a>
-            <span style="background:{color}22; color:{color}; padding:2px 8px; border-radius:10px; font-size:11px; font-weight:600; margin-left:8px;">
-              {tipo.upper()} · {rel}/100
-            </span>
-          </div>
-          <div style="color:{COLORS['text_dim']}; font-size:12px; margin-top:3px;">
-            {row.get('fuente','')} · {fecha_str}{(' · ' + tickers_str) if tickers_str else ''}
-          </div>
-          <div style="color:{COLORS['text_dim']}; font-size:13px; margin-top:8px;">
-            {resumen}
-          </div>
-          {f'<div style="color:{COLORS["yellow"]}; font-size:12px; margin-top:6px; font-weight:500;">🎯 {accion}</div>' if accion else ''}
+    # Agrupar por bucket de relevancia
+    buckets = [
+        ("🔥 Alta relevancia (≥60)",       df[df["relevancia_preliminar"] >= 60]),
+        ("📰 Relevancia media (30-59)",   df[(df["relevancia_preliminar"] >= 30) & (df["relevancia_preliminar"] < 60)]),
+        ("📄 Relevancia baja (<30)",       df[df["relevancia_preliminar"] < 30]),
+    ]
+    blocks = []
+    for label, df_b in buckets:
+        if df_b.empty:
+            continue
+        cards = "\n".join([_news_card_raw(row) for _, row in df_b.iterrows()])
+        blocks.append(f"""
+        <div style="margin: 16px 0 14px 0;">
+          <h3 style="color:{COLORS['text']}; font-size:14px; margin:0 0 8px 0;">
+            {label} <span style="color:{COLORS['text_dim']}; font-weight:normal;">({len(df_b)})</span>
+          </h3>
+          {cards}
         </div>""")
-
-    return "\n".join(items)
+    return "".join(blocks)
 
 
 def _build_portfolio_html(snap: dict) -> str:
