@@ -50,6 +50,11 @@ jobs:
         run: python -m intelligence.portfolio_health
         continue-on-error: true
 
+      # 2b. Detectar oportunidades (DIPs, MOMENTUM, NEAR ATH)
+      - name: Opportunity detector
+        run: python -m intelligence.opportunity_detector
+        continue-on-error: true
+
       # 3. Analizar noticias con Claude AI (solo si hay key)
       - name: AI news analysis
         if: ${{ env.ANTHROPIC_API_KEY != '' }}

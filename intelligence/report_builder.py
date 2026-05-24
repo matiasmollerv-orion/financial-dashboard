@@ -275,18 +275,24 @@ def _build_alerts_html(df: pd.DataFrame) -> str:
 
     # Agrupar por CATEGORÍA y renderizar cada grupo
     CAT_LABELS = {
-        "concentracion":   ("🎯", "Concentración"),
-        "valuacion":       ("💰", "Valuación / P/E"),
-        "drawdown":        ("📉", "Drawdowns"),
-        "volatilidad":     ("⚡", "Volatilidad anormal"),
-        "stale":           ("⏰", "Datos desactualizados"),
-        "cambiaria":       ("💱", "Exposición cambiaria"),
-        "liquidez":        ("💧", "Liquidez"),
-        "crypto":          ("🪙", "Exposición cripto"),
-        "salud_global":    ("🏥", "Salud global"),
+        # OPORTUNIDADES (van arriba)
+        "oportunidad_dip":  ("🎯", "Oportunidades de compra (DIPs)"),
+        "momentum_warning": ("⚠️", "Momentum warnings"),
+        # RIESGOS DE CARTERA
+        "concentracion":    ("🎯", "Concentración"),
+        "valuacion":        ("💰", "Valuación / P/E"),
+        "drawdown":         ("📉", "Drawdowns"),
+        "volatilidad":      ("⚡", "Volatilidad anormal"),
+        "stale":            ("⏰", "Datos desactualizados"),
+        "cambiaria":        ("💱", "Exposición cambiaria"),
+        "liquidez":         ("💧", "Liquidez"),
+        "crypto":           ("🪙", "Exposición cripto"),
+        "salud_global":     ("🏥", "Salud global"),
     }
 
-    categorias_orden = ["concentracion", "valuacion", "cambiaria", "crypto",
+    # Oportunidades primero, después riesgos
+    categorias_orden = ["oportunidad_dip", "momentum_warning",
+                        "concentracion", "valuacion", "cambiaria", "crypto",
                         "drawdown", "volatilidad", "stale", "liquidez", "salud_global"]
 
     blocks = []

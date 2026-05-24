@@ -1,0 +1,113 @@
+# =============================================================================
+# OPPORTUNITY DETECTION RULES — reglas profesionales pre-comprometidas
+# Basadas en Larry Connors + filtros institucionales
+# =============================================================================
+# El sistema NO compra automáticamente — solo alerta.
+# =============================================================================
+
+dips:
+  small_dip:
+    window_days:        5
+    threshold_pct:     -10.0
+    require_above_sma200: true
+    require_volume_ratio: 1.5
+    require_idiosyncratic: true   # caída no sistémica del sector
+    severidad: "media"
+    label: "🟡 DIP CHICO"
+    accion_min_usd: 150
+    accion_max_usd: 250
+    descripcion: "Caída -10% en últimos 5 días con volumen significativo. Posible compra puntual."
+
+  medium_dip:
+    window_days:       20
+    threshold_pct:    -15.0
+    require_above_sma200: true
+    require_no_negative_catalyst: true
+    severidad: "alta"
+    label: "🟠 DIP MEDIO"
+    accion_min_usd: 300
+    accion_max_usd: 500
+    descripcion: "Caída -15% en últimos 20 días sin catalyst negativo conocido. Oportunidad clara."
+
+  large_dip:
+    window_days:       60
+    threshold_pct:    -25.0
+    severidad: "alta"
+    label: "🔴 DIP GRANDE"
+    accion_min_usd: 600
+    accion_max_usd: 1000
+    descripcion: "Caída -25% en últimos 60 días. Si fundamentales OK, oportunidad de promediar agresivo."
+
+  bear_crash:
+    window_days:      252        # 1 año hábil
+    threshold_pct:    -40.0
+    from_ath: true
+    require_thesis_intact: true   # manual review
+    severidad: "critica"
+    label: "🚨 BEAR CRASH"
+    accion_min_usd: 1500
+    accion_max_usd: 2500
+    descripcion: "Bajo -40% desde all-time-high. Solo si la tesis sigue viva. Compra event-driven grande."
+
+momentum:
+  extreme_rally:
+    window_days:       20
+    threshold_pct:    30.0
+    severidad: "media"
+    label: "⚠️ MOMENTUM EXTREMO"
+    descripcion: "Subió +30% en 20 días. NO comprar, evaluar tomar profit parcial 25-30%."
+
+  near_ath:
+    distance_from_ath_pct: 5.0
+    severidad: "info"
+    label: "📈 NEAR ATH"
+    descripcion: "A menos del 5% del all-time-high. No es oportunidad de compra, solo info."
+
+# =============================================================================
+# FILTROS GLOBALES
+# =============================================================================
+global_filters:
+  # ETFs core — NO generan alertas (van por DCA recurrente solamente)
+  exclude_tickers:
+    - VTI
+    - VOO
+    - VXUS
+    - VWO
+    - VT
+    - BND
+    - BNDX
+    - IEF
+    - VGSH
+    - VTIP
+    - SCHP
+
+  # Posiciones residuales — ignorar a menos que estén en watchlist
+  min_position_or_watchlist_usd: 100
+
+  # Volumen mínimo: si <0.8x normal, puede ser ruido
+  min_volume_ratio: 0.8
+
+  # Para no spammear
+  max_alerts_per_run: 15
+
+  # Histórico mínimo de yfinance para calcular reglas confiablemente
+  min_price_history_days: 60
+
+# =============================================================================
+# WATCHLIST adicional (sin posición, pero monitorear)
+# Mantén en sintonía con CONTEXT.md sección 4
+# =============================================================================
+watchlist:
+  - UBER     # Tepper y Ackman compraron Q1
+  - COHR     # photonics
+  - LITE     # photonics
+  - GEV      # power
+  - VST      # power
+  - ETN      # power
+  - QCOM     # semis
+  - HOOD     # crypto-adjacent
+  - RDW      # space infra
+  - RXRX     # AI drug discovery
+  - SDGR     # AI drug discovery
+  - SYM      # robots
+  - CBRS     # Cerebras IPO
