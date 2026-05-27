@@ -43,31 +43,66 @@ def fetch_all(table: str, filter_col: str = None, filter_val=None,
     return all_rows
 
 
-def apply_racional(df_cart: pd.DataFrame, df_rac: pd.DataFrame) -> tuple[pd.DataFrame, list]:
-    """Aplica compras/ventas Racional internacional sobre cartera."""
+def _safe_qty(value) -> float:
+    """Convierte un valor a float, retornando 0.0 si es NaN/None/inválido.
+    CRÍTICO: si una transacción tiene acciones=NaN (parsing fallido),
+    NUNCA debemos aplicarla porque contamina la cartera entera con NaN."""
+    if value is None:
+        return 0.0
+    try:
+        v = float(value)
+        if pd.isna(v) or not pd.notna(v):
+            return 0.0
+        return v
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def _safe_existing(value) -> float:
+    """Lee valor existente de la cartera, tratando NaN como 0."""
+    if value is None:
+        return 0.0
+    try:
+        v = float(value)
+        return 0.0 if pd.isna(v) else v
+    except (ValueError, TypeError):
+        return 0.0
+
+
+def apply_racional(df_cart: pd.DataFrame, df_rac: pd.DataFrame) -> tuple:
+    """Aplica compras/ventas Racional internacional sobre cartera.
+    DEFENSIVO contra NaN: si una transacción tiene acciones=NaN (parsing fallido),
+    se ignora SILENCIOSAMENTE en vez de contaminar la cantidad con NaN."""
     log = []
     if df_rac.empty:
         return df_cart, log
 
     df_c = df_cart.copy().set_index("ticker")
+    # Asegurar dtype float en cantidad
+    df_c["cantidad"] = pd.to_numeric(df_c["cantidad"], errors="coerce").fillna(0).astype(float)
+
     intl = df_rac[df_rac["mercado"] == "internacional"].copy()
     intl["acciones"] = pd.to_numeric(intl["acciones"], errors="coerce")
     intl["precio_usd"] = pd.to_numeric(intl["precio_usd"], errors="coerce")
 
+    skipped_nan = 0
     for _, row in intl[intl["tipo"] == "compra"].iterrows():
         tk = row["ticker"]
-        qty = float(row.get("acciones") or 0)
+        qty = _safe_qty(row.get("acciones"))
         if qty <= 0:
+            if pd.isna(row.get("acciones")):
+                skipped_nan += 1
             continue
         if tk in df_c.index:
-            df_c.at[tk, "cantidad"] = (df_c.at[tk, "cantidad"] or 0) + qty
+            existing = _safe_existing(df_c.at[tk, "cantidad"])
+            df_c.at[tk, "cantidad"] = existing + qty
         else:
             df_c.loc[tk] = pd.Series({
                 "empresa": row.get("empresa", tk),
                 "mercado": "internacional",
                 "cantidad": qty,
-                "precio_compra": row.get("precio_usd") or 0,
-                "precio_actual": row.get("precio_usd") or 0,
+                "precio_compra": _safe_qty(row.get("precio_usd")),
+                "precio_actual": _safe_qty(row.get("precio_usd")),
                 "moneda": "USD",
                 "fecha_actualizacion": str(date.today()),
             })
@@ -75,37 +110,50 @@ def apply_racional(df_cart: pd.DataFrame, df_rac: pd.DataFrame) -> tuple[pd.Data
 
     for _, row in intl[intl["tipo"] == "venta"].iterrows():
         tk = row["ticker"]
-        qty = float(row.get("acciones") or 0)
+        qty = _safe_qty(row.get("acciones"))
         if qty <= 0:
+            if pd.isna(row.get("acciones")):
+                skipped_nan += 1
             continue
         if tk in df_c.index:
-            df_c.at[tk, "cantidad"] = max((df_c.at[tk, "cantidad"] or 0) - qty, 0)
+            existing = _safe_existing(df_c.at[tk, "cantidad"])
+            df_c.at[tk, "cantidad"] = max(existing - qty, 0)
 
-    df_c = df_c[df_c["cantidad"] > 0]
-    log.append(f"  ✅ Aplicadas {len(intl)} transacciones internacionales")
+    if skipped_nan > 0:
+        log.append(f"  ⚠️ {skipped_nan} transacciones ignoradas por parsing fallido (acciones=NaN)")
+
+    # Filtro seguro: fillna(0) protege contra cualquier NaN residual
+    df_c = df_c[df_c["cantidad"].fillna(0) > 0]
+    log.append(f"  ✅ Aplicadas {len(intl)} transacciones internacionales ({len(df_c)} posiciones resultantes)")
     return df_c.reset_index(), log
 
 
-def apply_buda(df_cart: pd.DataFrame, df_buda: pd.DataFrame) -> tuple[pd.DataFrame, list]:
-    """Suma compras crypto Buda."""
+def apply_buda(df_cart: pd.DataFrame, df_buda: pd.DataFrame) -> tuple:
+    """Suma compras crypto Buda (defensivo contra NaN)."""
     log = []
     if df_buda.empty:
         return df_cart, log
 
     df_c = df_cart.copy().set_index("ticker")
+    df_c["cantidad"] = pd.to_numeric(df_c["cantidad"], errors="coerce").fillna(0).astype(float)
+
     df_buda["cantidad"] = pd.to_numeric(df_buda["cantidad"], errors="coerce")
     grp = df_buda.groupby("activo")["cantidad"].sum()
 
     for activo, qty in grp.items():
+        safe_qty = _safe_qty(qty)
+        if safe_qty <= 0:
+            continue
         if activo in df_c.index:
-            df_c.at[activo, "cantidad"] = (df_c.at[activo, "cantidad"] or 0) + float(qty)
+            existing = _safe_existing(df_c.at[activo, "cantidad"])
+            df_c.at[activo, "cantidad"] = existing + safe_qty
         else:
             df_c.loc[activo] = pd.Series({
                 "empresa": activo,
                 "mercado": "crypto",
-                "cantidad": float(qty),
-                "precio_compra": 0,
-                "precio_actual": 0,
+                "cantidad": safe_qty,
+                "precio_compra": 0.0,
+                "precio_actual": 0.0,
                 "moneda": "USD",
                 "fecha_actualizacion": str(date.today()),
             })
