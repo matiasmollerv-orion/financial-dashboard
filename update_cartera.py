@@ -223,10 +223,68 @@ def update_prices(df_cart: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
-def write_cartera(df: pd.DataFrame):
+def get_previous_cartera_total() -> float:
+    """Lee el total previo de cartera_actual (antes de sobreescribir).
+    Sirve para sanity check: si el nuevo es <75% del previo, abortamos."""
+    USD_CLP_LOCAL = 901.76
+    try:
+        sb = get_client()
+        r = sb.table("cartera_actual").select("*").execute()
+        if not r.data:
+            return 0.0
+        df = pd.DataFrame(r.data)
+        df["cantidad"] = pd.to_numeric(df["cantidad"], errors="coerce").fillna(0)
+        df["precio_actual"] = pd.to_numeric(df["precio_actual"], errors="coerce").fillna(0)
+        df["valor_usd"] = df["cantidad"] * df["precio_actual"]
+        df["valor_clp"] = df.apply(
+            lambda r: r["valor_usd"] if r.get("moneda") == "CLP" else r["valor_usd"] * USD_CLP_LOCAL,
+            axis=1
+        )
+        return float(df["valor_clp"].sum())
+    except Exception:
+        return 0.0
+
+
+def write_cartera(df: pd.DataFrame, force: bool = False):
+    """Escribe cartera_actual con sanity check.
+    Si la cartera cae >25% vs anterior y no es force, aborta y mantiene la previa."""
+    USD_CLP_LOCAL = 901.76
     sb = get_client()
+
+    # Sanity check antes de escribir
+    df_local = df.copy()
+    df_local["cantidad"] = pd.to_numeric(df_local["cantidad"], errors="coerce").fillna(0)
+    df_local["precio_actual"] = pd.to_numeric(df_local["precio_actual"], errors="coerce").fillna(0)
+    df_local["_valor_usd"] = df_local["cantidad"] * df_local["precio_actual"]
+    df_local["_valor_clp"] = df_local.apply(
+        lambda r: r["_valor_usd"] if r.get("moneda") == "CLP" else r["_valor_usd"] * USD_CLP_LOCAL,
+        axis=1
+    )
+    new_total = float(df_local["_valor_clp"].sum())
+    prev_total = get_previous_cartera_total()
+
+    if prev_total > 0 and not force:
+        ratio = new_total / prev_total
+        if ratio < 0.75:
+            drop_pct = (1 - ratio) * 100
+            print(f"\n🚨 SANITY CHECK FALLÓ:")
+            print(f"   Cartera previa: ${prev_total:,.0f} CLP")
+            print(f"   Cartera nueva:  ${new_total:,.0f} CLP")
+            print(f"   Caída: -{drop_pct:.1f}%")
+            print(f"\n   No voy a sobreescribir. La cartera anterior se mantiene.")
+            print(f"   Para forzar de todos modos: usa --force")
+            raise RuntimeError(
+                f"Cartera cae {drop_pct:.1f}% vs anterior. "
+                f"Probablemente bug en update. Aborto para no perder data."
+            )
+        elif ratio < 0.90:
+            print(f"\n⚠️ ADVERTENCIA: Cartera cae {(1-ratio)*100:.1f}% vs anterior.")
+            print(f"   Previa: ${prev_total:,.0f} → Nueva: ${new_total:,.0f}")
+            print(f"   Continúo escribiendo, pero revisa si es esperado.")
+
+    # OK, escribir
     sb.table("cartera_actual").delete().neq("id", 0).execute()
-    records = df.drop(columns=["id", "created_at"], errors="ignore").to_dict("records")
+    records = df.drop(columns=["id", "created_at", "_valor_usd", "_valor_clp"], errors="ignore").to_dict("records")
     for r in records:
         for k, v in list(r.items()):
             if pd.isna(v):
@@ -238,6 +296,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--no-prices", action="store_true")
     parser.add_argument("--dry-run", action="store_true")
+    parser.add_argument("--force", action="store_true",
+                        help="Bypass sanity check (cartera cae >25% se permite)")
     args = parser.parse_args()
 
     print("=" * 60)
@@ -295,8 +355,12 @@ def main():
         print("\n⚠️ DRY RUN — no se escribió a Supabase")
     else:
         print(f"\n▶ Escribiendo {len(df_cart)} posiciones a Supabase...")
-        write_cartera(df_cart)
-        print("✅ cartera_actual actualizada")
+        try:
+            write_cartera(df_cart, force=args.force)
+            print("✅ cartera_actual actualizada")
+        except RuntimeError as e:
+            print(f"\n❌ ABORTADO: {e}")
+            sys.exit(1)
 
     print("=" * 60)
 

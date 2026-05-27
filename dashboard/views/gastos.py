@@ -302,10 +302,10 @@ def render():
     fig3.update_traces(
         hovertemplate=(
             "<b>%{x}</b><br>"
-            "%{customdata[0]}<br>"
-            "Monto: %{customdata[3]}<br>"
-            "%{customdata[1]:.1f}% del período<br>"
-            f"Total {period_label.lower()}: " + "%{customdata[2]}"
+            "<b>Categoría: %{customdata[0]}</b><br>"
+            "Gasto en esta categoría: %{customdata[3]}<br>"
+            "% del total del período: %{customdata[1]:.1f}%<br>"
+            f"Suma de TODAS las categorías en {period_label.lower()}: " + "%{customdata[2]}"
             "<extra></extra>"
         )
     )
