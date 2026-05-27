@@ -1,0 +1,41 @@
+name: Daily Health Check
+
+# Corre cada día a las 9:30am Chile (después del daily-update normal).
+# Verifica:
+#  1. Que cartera_actual se actualizó en últimos 36h
+#  2. Que santander_gastos no tenga gap mayor a 30 días
+#  3. Que racional_transacciones esté fresca
+# Si algo está stale, envía email de ALERTA.
+
+on:
+  schedule:
+    - cron: '30 12 * * *'   # 12:30 UTC = 9:30 Chile
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: 'pip'
+
+      - name: Install deps
+        run: pip install -r requirements.txt
+
+      - name: Create .env
+        run: |
+          echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
+          echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
+          echo "GMAIL_USER=${{ secrets.GMAIL_USER }}" >> .env
+          echo "GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}" >> .env
+          echo "RECIPIENT_EMAIL=${{ secrets.RECIPIENT_EMAIL }}" >> .env
+
+      - name: Run health check
+        run: python -m intelligence.health_check

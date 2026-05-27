@@ -103,6 +103,37 @@ if not check_password():
     st.stop()
 
 
+# ── Banner de salud del pipeline (CRITICAL) ───────────────
+@st.cache_data(ttl=600)
+def _check_data_freshness():
+    """Retorna (fecha_cartera, dias_atraso). Si > 2 días, mostramos banner rojo."""
+    try:
+        from database.supabase_client import get_client
+        sb = get_client()
+        r = sb.table("cartera_actual").select("fecha_actualizacion").order(
+            "fecha_actualizacion", desc=True).limit(1).execute()
+        if not r.data:
+            return None, None
+        from datetime import date as _date
+        import pandas as _pd
+        last = _pd.to_datetime(r.data[0]["fecha_actualizacion"]).date()
+        days = (_date.today() - last).days
+        return last, days
+    except Exception:
+        return None, None
+
+_last_update, _days_old = _check_data_freshness()
+if _days_old is not None and _days_old > 2:
+    st.error(
+        f"⚠️ **Datos desactualizados.** La cartera no se actualiza desde **{_last_update}** "
+        f"({_days_old} días atrás). Probablemente expiró el token Gmail. "
+        f"Revisa GitHub Actions o regenera el token. "
+        f"[Ver workflows](https://github.com/matiasmollerv-orion/financial-dashboard/actions)"
+    )
+elif _days_old is not None and _days_old > 1:
+    st.warning(f"⏳ Cartera actualizada al {_last_update} ({_days_old}d atrás). Si esto persiste mañana, revisa el pipeline.")
+
+
 # ── Sidebar de navegación ─────────────────────────────────
 with st.sidebar:
     st.markdown("## 💼 Financial Dashboard")

@@ -2,14 +2,14 @@ name: Daily Financial Update
 
 on:
   schedule:
-    # 11:00 UTC = 08:00 Chile (UTC-3 verano / UTC-4 invierno)
+    # 11:00 UTC = 08:00 Chile. Si GitHub se atrasa, igual corre cuando pueda.
     - cron: '0 11 * * *'
-  workflow_dispatch:   # también permite correrlo manualmente desde GitHub
+  workflow_dispatch:
 
 jobs:
   update:
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 20
 
     steps:
       - name: Checkout repo
@@ -24,64 +24,79 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
 
-      - name: Reconstruct Gmail token
-        run: |
-          mkdir -p config
-          echo "${{ secrets.GMAIL_TOKEN_PICKLE }}" | base64 -d > config/token.pickle
-          echo "${{ secrets.GMAIL_CREDENTIALS }}" | base64 -d > config/credentials.json
-
       - name: Create .env
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
           echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
           echo "SANTANDER_PDF_PASSWORD=${{ secrets.SANTANDER_PDF_PASSWORD }}" >> .env
+          echo "GMAIL_USER=${{ secrets.GMAIL_USER }}" >> .env
+          echo "GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}" >> .env
+
+      # Trackeamos qué pasos fallaron en un archivo, y al final decidimos el exit code
+      - name: Init failure tracker
+        run: echo "" > /tmp/failures.txt
 
       - name: Run Santander update (gastos + cuenta corriente)
-        run: python load_santander.py --days 14
-        continue-on-error: true
+        id: santander
+        run: python load_santander.py --days 14 || echo "santander" >> /tmp/failures.txt
 
       - name: Run Racional ventas update
-        run: python load_racional_ventas.py --days 14
-        continue-on-error: true
+        id: ventas
+        run: python load_racional_ventas.py --days 14 || echo "racional_ventas" >> /tmp/failures.txt
 
       - name: Run Racional compras update
+        id: compras
         run: |
           if [ -f load_racional.py ]; then
-            python load_racional.py --days 14
-          else
-            echo "⚠️ load_racional.py no existe — compras Racional no se cargarán"
+            python load_racional.py --days 14 || echo "racional_compras" >> /tmp/failures.txt
           fi
-        continue-on-error: true
 
       - name: Run Buda crypto update
+        id: buda
         run: |
           if [ -f load_buda.py ]; then
-            python load_buda.py --days 14
-          else
-            echo "⚠️ load_buda.py no existe — compras Buda no se cargarán"
+            python load_buda.py --days 14 || echo "buda" >> /tmp/failures.txt
           fi
-        continue-on-error: true
 
       - name: Reconcile iPhone notifications with PDF
         run: |
           if [ -f intelligence/reconcile_notifications.py ]; then
-            python -m intelligence.reconcile_notifications
+            python -m intelligence.reconcile_notifications || true
           fi
-        continue-on-error: true
 
-      - name: Update cartera_actual (aplica racional+buda + precios yfinance)
+      - name: Update cartera_actual (CRÍTICO)
+        id: cartera
         run: |
           if [ -f update_cartera.py ]; then
-            python update_cartera.py
-          else
-            echo "⚠️ update_cartera.py no existe — cartera_actual no se actualizará"
+            python update_cartera.py || echo "cartera" >> /tmp/failures.txt
           fi
-        continue-on-error: true
 
-      - name: Summary
+      - name: Summary + Health flag
         if: always()
         run: |
           echo "===== RESUMEN DE EJECUCIÓN ====="
           echo "Fecha: $(date)"
-          echo "Si algún paso falla con ❌, revisa los logs arriba."
+          if [ -s /tmp/failures.txt ]; then
+            echo "❌ PASOS QUE FALLARON:"
+            cat /tmp/failures.txt
+            echo ""
+            echo "Si hay 'santander' o 'racional_*' en la lista, probablemente expiró el token Gmail."
+            echo "Si hay 'cartera', falló update_cartera.py (revisar logs)."
+          else
+            echo "✅ Todos los loaders corrieron sin errores"
+          fi
           echo "================================="
+
+      # ⚠️ ESTE STEP HACE QUE EL WORKFLOW FALLE si Gmail expiró o cartera no se actualizó.
+      # Esto fuerza que GitHub muestre el run en rojo y se vea claramente que algo está mal.
+      - name: Fail loudly if critical steps broke
+        if: always()
+        run: |
+          if [ -s /tmp/failures.txt ]; then
+            CRITICAL_FAILED=$(grep -E "santander|racional_compras|cartera" /tmp/failures.txt || true)
+            if [ -n "$CRITICAL_FAILED" ]; then
+              echo "::error::Pasos críticos fallaron: $CRITICAL_FAILED"
+              echo "::error::Revisar token Gmail y regenerar si es necesario."
+              exit 1
+            fi
+          fi
