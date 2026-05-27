@@ -26,7 +26,7 @@ else:
 
 from extractors.gmail_client import (
     get_gmail_service, search_emails,
-    get_email_detail, get_email_date, get_email_subject,
+    get_email_detail, get_email_date, get_email_subject, get_email_body,
 )
 from database.supabase_client import get_client
 
@@ -39,21 +39,8 @@ sb = get_client()
 
 
 def get_body_text(detail):
-    """Extrae texto plano del email (igual que load_racional_ventas.py)."""
-    def recurse(part):
-        mime = part.get("mimeType", "")
-        data = part.get("body", {}).get("data", "")
-        if mime == "text/plain" and data:
-            return base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="ignore")
-        if mime == "text/html" and data:
-            html = base64.urlsafe_b64decode(data + "==").decode("utf-8", errors="ignore")
-            return re.sub(r"<[^>]+>", " ", html)
-        for p in part.get("parts", []):
-            r = recurse(p)
-            if r:
-                return r
-        return ""
-    return recurse(detail.get("payload", {}))
+    """Wrapper: usa get_email_body de gmail_client (compatible IMAP)."""
+    return get_email_body(detail)
 
 
 def parse_fecha(date_str):
