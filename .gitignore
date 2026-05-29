@@ -42,3 +42,4 @@ token.pickle
 
 # Credenciales Gmail
 credentials.json
+supabase/.temp/
