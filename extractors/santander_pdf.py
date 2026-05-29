@@ -182,19 +182,58 @@ def _clp_to_float(s: str) -> float:
     return float(s)
 
 
+def _find_column_anchors(words):
+    """
+    Encuentra los anchors x1 (alineación derecha) de las columnas CARGO/ABONO/SALDO
+    leyendo el header del PDF. Los montos están alineados a la derecha, así que
+    los matcheamos por x1 cercano al header.
+
+    Retorna dict {"cargo": x1_cargo, "abono": x1_abono, "saldo": x1_saldo} o {} si no encuentra.
+    """
+    anchors = {}
+    for w in words:
+        t = w["text"].upper().strip().rstrip("S")  # CARGOS→CARGO, ABONOS→ABONO
+        if t == "CARGO" and "cargo" not in anchors:
+            anchors["cargo"] = w["x1"]
+        elif t == "ABONO" and "abono" not in anchors:
+            anchors["abono"] = w["x1"]
+        elif t == "SALDO" and "saldo" not in anchors:
+            anchors["saldo"] = w["x1"]
+    return anchors if len(anchors) >= 2 else {}
+
+
+def _assign_to_column(amount_word, anchors, tol=15):
+    """
+    Dado un word de monto y los anchors x1 de las columnas, retorna a qué columna
+    pertenece según su x1 (alineación derecha). tol = tolerancia en px.
+    """
+    x1 = amount_word["x1"]
+    best = None
+    best_dist = tol + 1
+    for col_name, col_x1 in anchors.items():
+        d = abs(x1 - col_x1)
+        if d < best_dist:
+            best_dist = d
+            best = col_name
+    return best
+
+
 def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
     """
     Extrae movimientos de la Cartola Mensual de Cuenta Corriente Santander.
-    Usa posiciones X de las palabras para distinguir columnas:
-      FECHA (<60) | SUCURSAL (60-120) | DESC (120-380) | CARGO (380-450) | ABONO (450-545) | SALDO (>545)
+    Encuentra columnas CARGO/ABONO/SALDO leyendo el header del PDF y asignando
+    cada monto a la columna cuyo x1 (alineación derecha) coincide.
+    Fallback a X fijos si no encuentra el header.
     """
     unlocked = unlock_pdf(pdf_path)
     rows = []
     year = None
 
+    # Patrón de monto CLP: dígitos con puntos como miles, posible decimal con coma
+    AMOUNT_RE = re.compile(r"^-?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$|^-?\d+,\d{2}$")
+
     with pdfplumber.open(str(unlocked)) as pdf:
         for page in pdf.pages:
-            # Extraer año del texto crudo (header: "31/03/2025 30/04/2025")
             raw = page.extract_text() or ""
             if year is None:
                 m = re.search(r"\d{2}/\d{2}/(\d{4})", raw)
@@ -202,8 +241,9 @@ def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
                     year = int(m.group(1))
 
             words = page.extract_words()
+            anchors = _find_column_anchors(words)
 
-            # Agrupar palabras por fila (misma posición Y aproximada)
+            # Agrupar palabras por fila (Y aproximado)
             rows_by_y = {}
             for w in words:
                 y_key = round(w["top"] / 6) * 6
@@ -212,7 +252,7 @@ def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
             for y_key in sorted(rows_by_y):
                 line_words = sorted(rows_by_y[y_key], key=lambda w: w["x0"])
 
-                # La fila debe empezar con DD/MM en columna FECHA (x < 60)
+                # Fila debe empezar con DD/MM (x < 60)
                 fecha_words = [w for w in line_words if w["x0"] < 60]
                 if not fecha_words:
                     continue
@@ -220,47 +260,65 @@ def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
                 if not re.match(r"^\d{2}/\d{2}$", fecha_text):
                     continue
 
-                # Descripción: palabras en x 120–380, excluyendo N°DCTO (solo dígitos largos)
-                desc_words = [w for w in line_words if 120 <= w["x0"] < 380]
+                # Detectar palabras-monto (parseables como CLP)
+                amount_words = [w for w in line_words if AMOUNT_RE.match(w["text"])]
+
+                # Descripción: todo lo que NO es fecha, NO es N°DCTO (≥7 dígitos puros),
+                # y NO es uno de los amount_words. Limitamos x a 60–(min_x_monto-5).
+                amount_x0s = [w["x0"] for w in amount_words]
+                desc_x_max = min(amount_x0s) - 5 if amount_x0s else 380
+
                 desc_parts = []
-                for w in desc_words:
-                    # Saltar si es solo un número largo (N° DCTO, ≥7 dígitos)
-                    if re.match(r"^\d{7,}$", w["text"]):
+                for w in line_words:
+                    if w in fecha_words: continue
+                    if w in amount_words: continue
+                    if w["x0"] >= desc_x_max: continue
+                    if re.match(r"^\d{7,}$", w["text"]):  # N°DCTO
                         continue
                     desc_parts.append(w["text"])
                 descripcion = " ".join(desc_parts).strip()
                 if not descripcion:
                     continue
 
-                # Cargo: x 380–450
-                cargo_str = _join_col_words(line_words, 380, 450)
-                # Abono: x 450–545
-                abono_str = _join_col_words(line_words, 450, 545)
-                # Saldo: x > 545
-                saldo_str = _join_col_words(line_words, 545, 9999)
+                # Asignar montos a columnas
+                cargo_val = abono_val = saldo_val = None
 
-                # Determinar monto y tipo
-                monto = None
-                tipo = None
-                try:
-                    if cargo_str and re.search(r"\d", cargo_str):
-                        monto = _clp_to_float(cargo_str)
-                        tipo = "cargo"
-                    elif abono_str and re.search(r"\d", abono_str):
-                        monto = _clp_to_float(abono_str)
-                        tipo = "abono"
-                except (ValueError, ZeroDivisionError):
-                    continue
+                if anchors:
+                    # Asignación por alineación x1
+                    for w in amount_words:
+                        col = _assign_to_column(w, anchors)
+                        if col == "cargo" and cargo_val is None:
+                            try: cargo_val = _clp_to_float(w["text"])
+                            except ValueError: pass
+                        elif col == "abono" and abono_val is None:
+                            try: abono_val = _clp_to_float(w["text"])
+                            except ValueError: pass
+                        elif col == "saldo" and saldo_val is None:
+                            try: saldo_val = _clp_to_float(w["text"])
+                            except ValueError: pass
+                else:
+                    # Fallback: X fijos legacy
+                    cargo_str = _join_col_words(line_words, 380, 450)
+                    abono_str = _join_col_words(line_words, 450, 545)
+                    saldo_str = _join_col_words(line_words, 545, 9999)
+                    try:
+                        if cargo_str and re.search(r"\d", cargo_str):
+                            cargo_val = _clp_to_float(cargo_str)
+                        if abono_str and re.search(r"\d", abono_str):
+                            abono_val = _clp_to_float(abono_str)
+                        if saldo_str and re.search(r"\d", saldo_str):
+                            saldo_val = _clp_to_float(saldo_str)
+                    except (ValueError, ZeroDivisionError):
+                        continue
 
+                # Determinar tipo + monto principal
+                monto, tipo = None, None
+                if cargo_val and cargo_val > 0:
+                    monto, tipo = cargo_val, "cargo"
+                elif abono_val and abono_val > 0:
+                    monto, tipo = abono_val, "abono"
                 if monto is None or monto <= 0:
                     continue
-
-                saldo = None
-                if saldo_str and re.search(r"\d", saldo_str):
-                    try:
-                        saldo = _clp_to_float(saldo_str)
-                    except ValueError:
-                        pass
 
                 # Construir fecha completa
                 try:
@@ -276,7 +334,7 @@ def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
                     "fecha":       fecha,
                     "descripcion": descripcion,
                     "monto":       monto,
-                    "saldo":       saldo,
+                    "saldo":       saldo_val,
                     "moneda":      "CLP",
                     "tipo":        tipo,
                     "fuente":      "santander_cuenta",
@@ -285,9 +343,13 @@ def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
 
     df = pd.DataFrame(rows)
     if not df.empty:
-        df = df.drop_duplicates(subset=["fecha", "descripcion", "monto"])
+        df = df.drop_duplicates(subset=["fecha", "descripcion", "monto", "tipo"])
         df = df.sort_values("fecha").reset_index(drop=True)
-    print(f"  📄 Cuenta corriente: {len(df)} movimientos extraídos")
+        n_cargo = (df["tipo"] == "cargo").sum()
+        n_abono = (df["tipo"] == "abono").sum()
+        print(f"  📄 Cuenta corriente: {len(df)} movs ({n_cargo} cargos, {n_abono} abonos)")
+    else:
+        print(f"  📄 Cuenta corriente: 0 movs")
     return df
 
 

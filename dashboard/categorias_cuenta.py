@@ -42,6 +42,17 @@ REGLAS = [
      "Inversión", "excluir", "-"),
     (r"BUDA|Buda\.com",
      "Inversión", "excluir", "-"),
+    # Traspasos diarios ($3K/$6K) a "Cuenta de Otro Banco" → cripto Buda (excluir)
+    (r"Traspaso a Cuenta de Otro Banco",
+     "Inversión crypto (Buda)", "excluir", "-"),
+    # Brokers e instituciones de inversión
+    (r"VECTOR\b|VECTOR CL A|VECTOR CAPITAL",
+     "Inversión", "excluir", "-"),
+    (r"RENAISSANCE|XTB CHILE|SANTANDER CORREDORES|KOYWE",
+     "Inversión", "excluir", "-"),
+    # Pago a otras tarjetas de crédito (excluir, no es gasto real adicional)
+    (r"TARJETA CMR|CMR Mastercard|PAGO EN LINEA CAT",
+     "Pago TC otro banco", "excluir", "-"),
 
     # ── TRANSFERENCIAS ENTRE CUENTAS PROPIAS (excluir, no es gasto ni ingreso) ──
     (r"Transf\.\s+Matias\s+Alberto|Transf\.\s+Matias\s+Moller|Transf\..*Moller Verderau",
