@@ -263,6 +263,16 @@ def load_gastos():
 
 
 @st.cache_data(ttl=300)
+def load_cuenta():
+    """Carga movimientos de cuenta corriente Santander."""
+    data = _fetch_all_pages("santander_cuenta")
+    df = pd.DataFrame(data)
+    if not df.empty and "fecha" in df.columns:
+        df["fecha"] = pd.to_datetime(df["fecha"])
+    return df
+
+
+@st.cache_data(ttl=300)
 def load_vector():
     """Carga comprobantes Vector Capital."""
     sb = _get_sb()

@@ -145,6 +145,7 @@ with st.sidebar:
             "📊 Resumen",
             "📈 Inversiones",
             "💳 Gastos",
+            "🏦 Cuenta Corriente",
             "📋 Estado de Resultados",
             "🔮 Proyecciones",
             "🔍 Inteligencia",
@@ -184,6 +185,10 @@ elif pagina == "📈 Inversiones":
 
 elif pagina == "💳 Gastos":
     from dashboard.views.gastos import render
+    render()
+
+elif pagina == "🏦 Cuenta Corriente":
+    from dashboard.views.cuenta import render
     render()
 
 elif pagina == "📋 Estado de Resultados":
