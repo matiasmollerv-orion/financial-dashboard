@@ -182,40 +182,56 @@ def _clp_to_float(s: str) -> float:
     return float(s)
 
 
-def _find_column_anchors(words):
+def _find_column_ranges(words):
     """
-    Encuentra los anchors x1 (alineación derecha) de las columnas CARGO/ABONO/SALDO
-    leyendo el header del PDF. Los montos están alineados a la derecha, así que
-    los matcheamos por x1 cercano al header.
-
-    Retorna dict {"cargo": x1_cargo, "abono": x1_abono, "saldo": x1_saldo} o {} si no encuentra.
+    Detecta CARGO/ABONO/SALDO del header del DETALLE de movimientos.
+    Requiere que las 3 (o al menos 2) palabras estén en la MISMA fila Y
+    para no confundirse con headers de secciones de resumen.
     """
-    anchors = {}
+    # Agrupar palabras candidatas por fila
+    candidates_by_y = {}
     for w in words:
-        t = w["text"].upper().strip().rstrip("S")  # CARGOS→CARGO, ABONOS→ABONO
-        if t == "CARGO" and "cargo" not in anchors:
-            anchors["cargo"] = w["x1"]
-        elif t == "ABONO" and "abono" not in anchors:
-            anchors["abono"] = w["x1"]
-        elif t == "SALDO" and "saldo" not in anchors:
-            anchors["saldo"] = w["x1"]
-    return anchors if len(anchors) >= 2 else {}
+        t = w["text"].upper().strip().rstrip("S")
+        if t in ("CARGO", "ABONO", "SALDO"):
+            y_key = round(w["top"] / 6) * 6
+            candidates_by_y.setdefault(y_key, {})[t.lower()] = (w["x0"], w["x1"])
+
+    # Tomar la fila con MÁS headers; si empata, la de más arriba
+    best_row = None
+    best_count = 0
+    for y, hdrs in sorted(candidates_by_y.items()):
+        if len(hdrs) > best_count:
+            best_count = len(hdrs)
+            best_row = hdrs
+
+    if not best_row or len(best_row) < 2:
+        return {}
+
+    ordered = sorted(best_row.items(), key=lambda kv: kv[1][1])
+    ranges = {}
+    for i, (name, (x0, x1)) in enumerate(ordered):
+        if i == 0:
+            left = x0 - 65
+        else:
+            _, (px0, px1) = ordered[i - 1]
+            left = (px1 + x0) / 2
+        if i < len(ordered) - 1:
+            _, (nx0, nx1) = ordered[i + 1]
+            right = (x1 + nx0) / 2
+        else:
+            right = x1 + 10
+        ranges[name] = (left, right)
+    return ranges
 
 
-def _assign_to_column(amount_word, anchors, tol=15):
-    """
-    Dado un word de monto y los anchors x1 de las columnas, retorna a qué columna
-    pertenece según su x1 (alineación derecha). tol = tolerancia en px.
-    """
-    x1 = amount_word["x1"]
-    best = None
-    best_dist = tol + 1
-    for col_name, col_x1 in anchors.items():
-        d = abs(x1 - col_x1)
-        if d < best_dist:
-            best_dist = d
-            best = col_name
-    return best
+def _join_amount(line_words, x_left, x_right):
+    """Joinea palabras cuyo centro x está en [x_left, x_right) y devuelve string."""
+    parts = []
+    for w in sorted(line_words, key=lambda w: w["x0"]):
+        cx = (w["x0"] + w["x1"]) / 2
+        if x_left <= cx < x_right:
+            parts.append(w["text"])
+    return "".join(parts).strip()
 
 
 def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
@@ -229,9 +245,7 @@ def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
     rows = []
     year = None
 
-    # Patrón de monto CLP: dígitos con puntos como miles, posible decimal con coma
-    AMOUNT_RE = re.compile(r"^-?\d{1,3}(?:\.\d{3})*(?:,\d{1,2})?$|^-?\d+,\d{2}$")
-
+    last_ranges = {}
     with pdfplumber.open(str(unlocked)) as pdf:
         for page in pdf.pages:
             raw = page.extract_text() or ""
@@ -241,7 +255,10 @@ def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
                     year = int(m.group(1))
 
             words = page.extract_words()
-            anchors = _find_column_anchors(words)
+            page_ranges = _find_column_ranges(words)
+            if page_ranges:
+                last_ranges = page_ranges
+            ranges = page_ranges or last_ranges
 
             # Agrupar palabras por fila (Y aproximado)
             rows_by_y = {}
@@ -260,56 +277,52 @@ def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
                 if not re.match(r"^\d{2}/\d{2}$", fecha_text):
                     continue
 
-                # Detectar palabras-monto (parseables como CLP)
-                amount_words = [w for w in line_words if AMOUNT_RE.match(w["text"])]
+                # Joinear cada columna con sus rangos detectados (o fallback legacy)
+                if ranges:
+                    cargo_str = _join_amount(line_words, *ranges.get("cargo", (0, 0)))
+                    abono_str = _join_amount(line_words, *ranges.get("abono", (0, 0)))
+                    saldo_str = _join_amount(line_words, *ranges.get("saldo", (0, 0)))
+                    desc_x_max = ranges["cargo"][0] if "cargo" in ranges else 380
+                else:
+                    cargo_str = _join_col_words(line_words, 380, 450) or ""
+                    abono_str = _join_col_words(line_words, 450, 545) or ""
+                    saldo_str = _join_col_words(line_words, 545, 9999) or ""
+                    desc_x_max = 380
 
-                # Descripción: todo lo que NO es fecha, NO es N°DCTO (≥7 dígitos puros),
-                # y NO es uno de los amount_words. Limitamos x a 60–(min_x_monto-5).
-                amount_x0s = [w["x0"] for w in amount_words]
-                desc_x_max = min(amount_x0s) - 5 if amount_x0s else 380
-
+                # Descripción: palabras con centro x < desc_x_max, NO fecha, NO N°DCTO
                 desc_parts = []
                 for w in line_words:
+                    cx = (w["x0"] + w["x1"]) / 2
+                    if cx >= desc_x_max: continue
                     if w in fecha_words: continue
-                    if w in amount_words: continue
-                    if w["x0"] >= desc_x_max: continue
-                    if re.match(r"^\d{7,}$", w["text"]):  # N°DCTO
+                    if re.match(r"^\d{7,}$", w["text"]):  # N°DCTO largo
                         continue
+                    # Quitar SUCURSAL muy a la izquierda (60-120) que no aporta
+                    if 60 <= w["x0"] < 110 and not desc_parts:
+                        # nombre de sucursal: lo dejamos pegado a la descripcion como contexto
+                        pass
                     desc_parts.append(w["text"])
                 descripcion = " ".join(desc_parts).strip()
                 if not descripcion:
                     continue
 
-                # Asignar montos a columnas
+                # Parsear montos
                 cargo_val = abono_val = saldo_val = None
+                try:
+                    if cargo_str and re.search(r"\d", cargo_str):
+                        cargo_val = _clp_to_float(cargo_str)
+                    if abono_str and re.search(r"\d", abono_str):
+                        abono_val = _clp_to_float(abono_str)
+                    if saldo_str and re.search(r"\d", saldo_str):
+                        saldo_val = _clp_to_float(saldo_str)
+                except (ValueError, ZeroDivisionError):
+                    continue
 
-                if anchors:
-                    # Asignación por alineación x1
-                    for w in amount_words:
-                        col = _assign_to_column(w, anchors)
-                        if col == "cargo" and cargo_val is None:
-                            try: cargo_val = _clp_to_float(w["text"])
-                            except ValueError: pass
-                        elif col == "abono" and abono_val is None:
-                            try: abono_val = _clp_to_float(w["text"])
-                            except ValueError: pass
-                        elif col == "saldo" and saldo_val is None:
-                            try: saldo_val = _clp_to_float(w["text"])
-                            except ValueError: pass
-                else:
-                    # Fallback: X fijos legacy
-                    cargo_str = _join_col_words(line_words, 380, 450)
-                    abono_str = _join_col_words(line_words, 450, 545)
-                    saldo_str = _join_col_words(line_words, 545, 9999)
-                    try:
-                        if cargo_str and re.search(r"\d", cargo_str):
-                            cargo_val = _clp_to_float(cargo_str)
-                        if abono_str and re.search(r"\d", abono_str):
-                            abono_val = _clp_to_float(abono_str)
-                        if saldo_str and re.search(r"\d", saldo_str):
-                            saldo_val = _clp_to_float(saldo_str)
-                    except (ValueError, ZeroDivisionError):
-                        continue
+                # Sanity check: descartar montos absurdos (>$1.000M = bug de concatenación)
+                MAX_MONTO = 1_000_000_000
+                if cargo_val and cargo_val > MAX_MONTO: cargo_val = None
+                if abono_val and abono_val > MAX_MONTO: abono_val = None
+                if saldo_val and saldo_val > 10_000_000_000: saldo_val = None
 
                 # Determinar tipo + monto principal
                 monto, tipo = None, None
