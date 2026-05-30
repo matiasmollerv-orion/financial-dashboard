@@ -151,7 +151,15 @@ for pdf_path in pdfs:
         else:
             df = parse_tarjeta_credito(pdf_path)
             if not df.empty:
-                if es_dolar:
+                # El parser detecta la moneda leyendo el contenido del PDF.
+                # Separamos por la columna 'moneda' del DF (no por el nombre del archivo,
+                # que muchas veces no contiene "USD"/"dolar").
+                if "moneda" in df.columns:
+                    df_usd = df[df["moneda"] == "USD"]
+                    df_clp = df[df["moneda"] != "USD"]
+                    if not df_usd.empty: all_tarjeta_usd.append(df_usd)
+                    if not df_clp.empty: all_tarjeta_clp.append(df_clp)
+                elif es_dolar:
                     all_tarjeta_usd.append(df)
                 else:
                     all_tarjeta_clp.append(df)
@@ -265,19 +273,21 @@ if all_tarjeta_clp:
 else:
     print("  ⚠️  Tarjeta CLP : sin datos")
 
-# Tarjeta USD
+# Tarjeta USD (convertida a CLP * 900 para unificar con gastos en pesos)
+USD_CLP = 900
 if all_tarjeta_usd:
     df = pd.concat(all_tarjeta_usd, ignore_index=True)
     df = df[df["monto"].notna()].copy()
     registros = []
     for r in df.to_dict("records"):
-        monto_abs = abs(float(r["monto"]))
+        monto_usd = abs(float(r["monto"]))
+        monto_clp = round(monto_usd * USD_CLP)
         registros.append(clean_row(r, {
-            "monto": monto_abs,
-            "moneda": "USD",
+            "monto": monto_clp,
+            "moneda": "USD",   # informativo: indica origen USD aunque el monto ya está en CLP
         }, allowed_cols=GASTOS_COLS))
     n, s = bulk_insert("santander_gastos", registros, existing_gastos_keys, make_key_gastos)
-    print(f"  ✅ Tarjeta USD : {n:>5} nuevas  {s:>5} ya existían  ({len(all_tarjeta_usd)} PDFs)")
+    print(f"  ✅ Tarjeta USD : {n:>5} nuevas  {s:>5} ya existían  (convertido a CLP × {USD_CLP})")
 else:
     print("  ⚠️  Tarjeta USD : sin datos")
 
