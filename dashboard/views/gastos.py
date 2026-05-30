@@ -204,7 +204,15 @@ def render():
 
     # Opciones de período disponibles según df_f
     df_f_dates = pd.to_datetime(df_f["fecha"])
-    period_options = ["Todos"]
+    # Atajos relativos (calculados sobre la fecha máxima de los datos)
+    RELATIVOS = [
+        ("Último mes",      30),
+        ("Últimos 3 meses", 90),
+        ("Últimos 6 meses", 180),
+        ("Último año",      365),
+        ("Últimos 2 años",  730),
+    ]
+    period_options = ["Todos"] + [r[0] for r in RELATIVOS]
     if not df_f_dates.empty:
         meses_es = {1:"Ene",2:"Feb",3:"Mar",4:"Abr",5:"May",6:"Jun",
                     7:"Jul",8:"Ago",9:"Sep",10:"Oct",11:"Nov",12:"Dic"}
@@ -226,7 +234,13 @@ def render():
         )
 
     # Aplicar filtro de período del gráfico (encima de los top filters)
-    if periodo_sel != "Todos":
+    relativos_dict = dict(RELATIVOS)
+    if periodo_sel in relativos_dict:
+        # Atajo relativo: últimos N días desde la fecha máxima de los datos
+        ref_date = df_f["fecha"].max()
+        days_back = relativos_dict[periodo_sel]
+        df_f = df_f[df_f["fecha"] >= ref_date - pd.Timedelta(days=days_back)]
+    elif periodo_sel != "Todos":
         if " " in periodo_sel:
             mes_str, y_str = periodo_sel.split()
             meses_es_inv = {"Ene":1,"Feb":2,"Mar":3,"Abr":4,"May":5,"Jun":6,
