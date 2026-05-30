@@ -286,7 +286,8 @@ if all_cuenta:
     registros = []
     for r in df.to_dict("records"):
         monto_abs = abs(float(r["monto"]))
-        tipo_cc = "abono" if float(r["monto"]) > 0 else "cargo"
+        # Usar tipo del parser (lee CARGO/ABONO de la columna del PDF). Fallback solo si falta.
+        tipo_cc = r.get("tipo") or ("abono" if float(r["monto"]) > 0 else "cargo")
         registros.append(clean_row(r, {
             "monto": monto_abs,
             "tipo": tipo_cc,

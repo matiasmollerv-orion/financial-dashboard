@@ -318,8 +318,9 @@ def parse_cuenta_corriente(pdf_path: Path) -> pd.DataFrame:
                 except (ValueError, ZeroDivisionError):
                     continue
 
-                # Sanity check: descartar montos absurdos (>$1.000M = bug de concatenación)
-                MAX_MONTO = 1_000_000_000
+                # Sanity check: descartar montos absurdos (>$100M en movimiento individual)
+                # Cuenta corriente: incluso un pago de auto/depto ~$50M; >$100M es bug.
+                MAX_MONTO = 100_000_000
                 if cargo_val and cargo_val > MAX_MONTO: cargo_val = None
                 if abono_val and abono_val > MAX_MONTO: abono_val = None
                 if saldo_val and saldo_val > 10_000_000_000: saldo_val = None
