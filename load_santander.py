@@ -59,7 +59,9 @@ print("PASO 1: Descarga de PDFs")
 print("=" * 60)
 
 queries = {
-    "Tarjeta de Crédito": f'from:mensajeria@santander.cl subject:"Estado de Cuenta Tarjeta de Credito"{DATE_FILTER}',
+    # Subject real: "Estado de Cuenta Tarjeta de Crédito"
+    # IMAP no matchea acentos: usamos solo el prefijo sin tilde.
+    "Tarjeta de Crédito": f'from:mensajeria@santander.cl subject:"Estado de Cuenta Tarjeta"{DATE_FILTER}',
     "Cuenta Corriente":   f'from:mensajeria@santander.cl subject:"Cartola Mensual de Cuentas"{DATE_FILTER}',
 }
 
