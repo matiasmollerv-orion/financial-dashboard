@@ -90,16 +90,64 @@ REGLAS = [
     (r"Mercado Libre.*Sueldo|MLI.*Sueldo|Pago Mercado Libre",
      "Sueldo", "ingreso", "+"),
 
-    # ── TRANSFERENCIAS A TERCEROS (gasto si sale, neutro si conocido) ──
-    # Familiares conocidos (transferencias regulares - probablemente no son gastos reales)
-    (r"Transf\.\s*MARIA BEGO|Transf\.\s+MARIA BEGONA",
-     "Transferencia familia", "neutro", "-"),
-    (r"Transf\..*MOLLER\b|Transf\..*VERDERAU|Transf\..*TOMAS",
-     "Transferencia familia", "neutro", "-"),
-    (r"Transf\..*CARLOS LUI|Transf\..*CARLOS LUIS MOLLER",
-     "Transferencia familia", "neutro", "-"),
+    # ── PERSONAS IDENTIFICADAS (orden importa: específicas primero) ──
 
-    # ── ARRIENDO / GGCC (gasto recurrente) ──
+    # Señora (María Begoña Alarcón) - movimientos compartidos del hogar
+    (r"MARIA BEGO|MARIA BEGONA",
+     "Pareja (María Begoña)", "neutro", "?"),
+
+    # Suegro (Rene Pablo Alarcón Lillo) - gastos de matrimonio
+    (r"Rene Pablo Alarcon|RENE PABLO ALARCON",
+     "Matrimonio (suegro)", "neutro", "?"),
+
+    # Dueña del depto (Veronica Morales) → ARRIENDO real
+    (r"Veronica Morales|VERONICA MORALES",
+     "Arriendo (dueña depto)", "gasto", "-"),
+
+    # CARLOS LUIS AGUILERA - gasto de matrimonio (NO es familia)
+    (r"CARLOS LUIS AGUILERA|CARLOS LUIS AGUI\b",
+     "Matrimonio (Aguilera)", "gasto", "-"),
+
+    # Padre (Carlos Luis Moller / Moller Parot) - 2 cuentas distintas pero misma persona
+    # ⚠️ Va DESPUÉS de Aguilera para que ese match gane si aplica
+    (r"Transf\.\s*CARLOS LUI(?!.*AGUILERA)|CARLOS LUIS MOLLER",
+     "Familia (padre)", "neutro", "?"),
+    (r"MOLLER PARO|Moller Parot",
+     "Familia (padre)", "neutro", "?"),
+
+    # Familiar (Juan Andrés Ruiz Tagle)
+    (r"Juan Andres Ruiz|JUAN ANDRES RUIZ",
+     "Familia", "neutro", "?"),
+
+    # Amigo (Alejandro Barros)
+    (r"Alejandro Barros|ALEJANDRO BARROS",
+     "Amigo", "neutro", "?"),
+
+    # Venta personal (Ronny Andrés González te compró un iPad)
+    (r"Ronny Andres Gonzalez|RONNY ANDRES GONZALEZ",
+     "Venta personal", "ingreso", "+"),
+
+    # Banquetera del matrimonio
+    (r"RC BANQUETERIA|BANQUETERIA",
+     "Matrimonio (banquetera)", "gasto", "-"),
+
+    # Inversión crypto antigua (Smash SpA)
+    (r"Smash SpA|SMASH SPA",
+     "Inversión", "excluir", "-"),
+
+    # Inversión inmobiliaria (Physica PPC SpA)
+    (r"Physica PPC|PHYSICA PPC|PHYSICA SPA",
+     "Inversión inmobiliaria", "excluir", "-"),
+
+    # Renta 4 (inversiones)
+    (r"\bRENTA\b\s*4|RENTA 4|Renta 4",
+     "Inversión", "excluir", "-"),
+
+    # Otros familiares con apellido Moller / Verderau / Tomas (genérico, queda al final)
+    (r"Transf\..*MOLLER\b(?!.*PARO)|Transf\..*VERDERAU|Transf\..*TOMAS",
+     "Familia", "neutro", "?"),
+
+    # ── ARRIENDO / GGCC genérico (gasto recurrente) ──
     (r"ARRIENDO|ARRENDAMIENTO|GASTOS COMUNES|GTO\s+COMUN|CONDOMINIO",
      "Arriendo/GGCC", "gasto", "-"),
 
