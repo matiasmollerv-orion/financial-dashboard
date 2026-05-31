@@ -1036,14 +1036,16 @@ def render():
                     df_pe["color_pe"] = df_pe["pe"].apply(
                         lambda x: "#2ecc71" if x < 15 else ("#f39c12" if x < 25 else "#e74c3c")
                     )
-                    df_pe["hover_pe"] = df_pe.apply(
-                        lambda r: (
+                    def _hover_pe(r):
+                        eps_str = f"{r['eps']:.2f}" if pd.notna(r['eps']) else "—"
+                        dy_str  = f"{r['div_yield']:.2f}%" if pd.notna(r.get('div_yield')) else "—"
+                        return (
                             f"<b>{r['ticker']}</b><br>"
-                            f"P/E: {r['pe']:.1f}x | EPS: {r['eps']:.2f if pd.notna(r['eps']) else '—'}<br>"
-                            f"Div Yield: {r['div_yield']:.2f}%<br>"
+                            f"P/E: {r['pe']:.1f}x | EPS: {eps_str}<br>"
+                            f"Div Yield: {dy_str}<br>"
                             f"Valor: {fmt_clp(r['valor_clp'])}"
-                        ), axis=1
-                    )
+                        )
+                    df_pe["hover_pe"] = df_pe.apply(_hover_pe, axis=1)
                     fig_pe = go.Figure(go.Bar(
                         x=df_pe["pe"], y=df_pe["ticker"],
                         orientation="h",

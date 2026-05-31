@@ -63,6 +63,11 @@ def render():
     # ── Enriquecer con categorías de 2 niveles ────────────
     df = categorizar_df(df_raw.copy())
     df["monto"] = pd.to_numeric(df["monto"], errors="coerce")
+    df["fecha"] = pd.to_datetime(df["fecha"], errors="coerce")
+
+    # Excluir filas con fecha futura (cargos programados que aún no ocurren)
+    hoy = pd.Timestamp.today().normalize()
+    df = df[df["fecha"].notna() & (df["fecha"] <= hoy)]
 
     # Excluir Investments y Pago TC del análisis de gastos
     # (Pago TC son los pagos mensuales al banco, no gastos reales)

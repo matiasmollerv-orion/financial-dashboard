@@ -1,201 +1,201 @@
 # ============================================================
 # CATEGORIZACIÓN DE CUENTA CORRIENTE
 #
-# Las transferencias de la cuenta corriente NO son todas gastos.
-# Algunas son inversiones (ya contadas en racional/buda),
-# pagos de TC (ya contados en santander_gastos), transferencias
-# entre cuentas propias (no son ni gasto ni ingreso), etc.
-#
-# Este módulo categoriza cada transferencia para que el dashboard
-# muestre SOLO los gastos reales sin doble contar.
+# Estructura paralela a dashboard/categorias.py (gastos TC):
+#   - cc_top_level     ("Fixed Costs", "Guilt Free", "Investments",
+#                       "Impuestos", "Familia", "Ingresos", "Excluir")
+#   - cc_subcategoria  (Matrimonio, Arriendo, Crypto, Compras, etc.)
+#   - cc_contabilidad  ("gasto", "ingreso", "excluir", "neutro")
+#       gasto    → cuenta como egreso real
+#       ingreso  → cuenta como ingreso real
+#       excluir  → YA está contado en otra fuente (Pago TC, Inversiones,
+#                  traspaso entre cuentas propias) — no doble contar
+#       neutro   → familia/pareja/amigos: informativo, no afecta balance
 # ============================================================
 
 import re
 from typing import Tuple
 
-# Cada regla: (regex, categoria, flag_contabilidad, signo_default)
-# flag_contabilidad:
-#   - "gasto": cuenta como gasto real (egreso)
-#   - "ingreso": cuenta como ingreso (sueldo, devoluciones)
-#   - "excluir": no contar (ya está en otra fuente - pago TC, inversiones, traspasos internos)
-#   - "neutro": informativo, no afecta balance (transferencias familiares, divisas)
-# signo_default: si el monto del PDF viene siempre positivo, asumimos este signo
-#   - "+": entra plata (abono)
-#   - "-": sale plata (cargo)
-#   - "?": ambiguo, requiere lookup del valor original
-
+# Cada regla: (regex, top_level, subcategoria, contabilidad)
 REGLAS = [
-    # ── PAGOS DE TARJETA DE CRÉDITO (excluir, ya están en santander_gastos) ──
+    # ── PAGO TC PROPIO (excluir — ya está en santander_gastos) ──
     (r"Traspaso.*T\.?\s*Cr[eé]dito|Traspaso Internet a T\. Cr[eé]dito",
-     "Pago TC", "excluir", "-"),
+     "Fixed Costs", "Pago TC", "excluir"),
     (r"Pago Autom[aá]tico T\. de Cr[eé]dito|Abono Tarjeta|Pago Tarjeta Cr[eé]dito",
-     "Pago TC", "excluir", "-"),
+     "Fixed Costs", "Pago TC", "excluir"),
 
-    # ── INVERSIONES (excluir, ya están en racional/buda) ──
-    (r"Inversi[oó]n en Fondo Mutuo|Aporte.*Fondo Mutuo|Cargo FM\b",
-     "Inversión", "excluir", "-"),
-    (r"Traspaso Internet a Cuentam[aá]tica|Cuentam[aá]tica",
-     "Inversión", "excluir", "-"),
-    (r"Aporte\s+AFP|Cotizaci[oó]n Previsional",
-     "Inversión", "excluir", "-"),
-    (r"PAGO RACIONAL|Racional",
-     "Inversión", "excluir", "-"),
-    (r"BUDA|Buda\.com",
-     "Inversión", "excluir", "-"),
-    # Traspasos diarios ($3K/$6K) a "Cuenta de Otro Banco" → cripto Buda (excluir)
-    (r"Traspaso a Cuenta de Otro Banco",
-     "Inversión crypto (Buda)", "excluir", "-"),
-    # Brokers e instituciones de inversión
-    (r"VECTOR\b|VECTOR CL A|VECTOR CAPITAL",
-     "Inversión", "excluir", "-"),
-    (r"RENAISSANCE|XTB CHILE|SANTANDER CORREDORES|KOYWE",
-     "Inversión", "excluir", "-"),
-    # Pago a otras tarjetas de crédito (excluir, no es gasto real adicional)
+    # ── PAGO TC DE OTRO BANCO (excluir, ya está contado en esa otra TC) ──
     (r"TARJETA CMR|CMR Mastercard|PAGO EN LINEA CAT",
-     "Pago TC otro banco", "excluir", "-"),
+     "Fixed Costs", "Pago TC", "excluir"),
 
-    # ── TRANSFERENCIAS ENTRE CUENTAS PROPIAS (excluir, no es gasto ni ingreso) ──
-    (r"Transf\.\s+Matias\s+Alberto|Transf\.\s+Matias\s+Moller|Transf\..*Moller Verderau",
-     "Traspaso propio", "excluir", "?"),
-    (r"Transf\.\s+Matias\b(?!\s+(?:Alberto|Moller))",
-     "Traspaso propio", "excluir", "?"),
-    (r"Traspaso Internet de Cuenta Vista|Traspaso de Cuenta Vista",
-     "Traspaso propio", "excluir", "+"),
+    # ── INVERSIONES (excluir — ya están en racional/buda/manuales) ──
+    (r"Inversi[oó]n en Fondo Mutuo|Aporte.*Fondo Mutuo|Cargo FM\b",
+     "Investments", "Fondos mutuos", "excluir"),
+    (r"Traspaso Internet a Cuentam[aá]tica|Cuentam[aá]tica",
+     "Investments", "Cuentamática", "excluir"),
+    (r"Aporte\s+AFP|Cotizaci[oó]n Previsional",
+     "Investments", "AFP", "excluir"),
+    (r"PAGO RACIONAL|Racional",
+     "Investments", "Racional", "excluir"),
+    (r"BUDA|Buda\.com",
+     "Investments", "Crypto Buda", "excluir"),
+    # Traspasos diarios $3K/$6K a Cuenta de Otro Banco = crypto Buda
+    (r"Traspaso a Cuenta de Otro Banco",
+     "Investments", "Crypto Buda", "excluir"),
+    # Brokers e instituciones
+    (r"VECTOR\b|VECTOR CL A|VECTOR CAPITAL",
+     "Investments", "Vector", "excluir"),
+    (r"RENAISSANCE|XTB CHILE|SANTANDER CORREDORES|KOYWE|Renta 4|\bRENTA 4\b",
+     "Investments", "Brokers", "excluir"),
+    (r"Smash SpA|SMASH SPA",
+     "Investments", "Crypto antiguo", "excluir"),
+    (r"Physica PPC|PHYSICA PPC|PHYSICA SPA",
+     "Investments", "Inmobiliaria", "excluir"),
+    (r"Wallstate|WALLSTATE",
+     "Investments", "Inmobiliaria", "excluir"),
+    (r"PADEL RINCONADA|PADEL\s+RINCONADA",
+     "Investments", "Inmobiliaria", "excluir"),
 
-    # ── COMPRA/VENTA DE DIVISAS (neutro - es conversión, no gasto) ──
+    # ── TRASPASO ENTRE CUENTAS PROPIAS (excluir — solo mueve plata tuya) ──
+    # NOTA: "Transf." con punto Y "Transf a" sin punto, ambos formatos
+    (r"Transf\.?\s+(?:a\s+)?Matias\s+Alberto",
+     "Excluir", "Traspaso propio", "excluir"),
+    (r"Transf\.?\s+(?:a\s+)?Matias\s+(?:Moller|Mario)",
+     "Excluir", "Traspaso propio", "excluir"),
+    (r"Transf\.?\s+(?:a\s+)?Matias\b(?!\s+(?:Alberto|Moller|Mario))",
+     "Excluir", "Traspaso propio", "excluir"),
+    (r"Transf\..*Moller Verderau",
+     "Excluir", "Traspaso propio", "excluir"),
+    (r"Traspaso Internet de Cuenta Vista|Traspaso de Cuenta Vista|Dep[oó]sito.*Vales Vista",
+     "Excluir", "Traspaso propio", "excluir"),
+
+    # ── CAMBIO DE DIVISAS (neutro, es conversión no gasto) ──
     (r"Egreso por Compra de Divisas|Compra de Divisas|Compra USD|Compra D[oó]lares",
-     "Cambio divisas", "neutro", "-"),
-    (r"Venta de Divisas|Venta USD|Venta D[oó]lares",
-     "Cambio divisas", "neutro", "+"),
+     "Fixed Costs", "Cambio divisas", "neutro"),
+    (r"Venta de Divisas|Venta USD|Venta D[oó]lares|ABONO DE DIVISAS",
+     "Fixed Costs", "Cambio divisas", "neutro"),
 
     # ── COMISIONES BANCARIAS (gasto real) ──
     (r"COM\.MANTENCION|COMISION MANTENCION|MANTENCION PLAN|Cargo Anual",
-     "Comisiones bancarias", "gasto", "-"),
+     "Fixed Costs", "Comisiones", "gasto"),
     (r"COMISION|COBRO SERVICIO|Cuota Manejo",
-     "Comisiones bancarias", "gasto", "-"),
+     "Fixed Costs", "Comisiones", "gasto"),
     (r"NOTA DE CREDITO|N/C\b",
-     "Comisiones bancarias", "neutro", "+"),
+     "Fixed Costs", "Comisiones", "neutro"),
+    (r"OPER\.\s*CENT\s+Devolucion|Devoluci[oó]n\b",
+     "Fixed Costs", "Comisiones", "neutro"),
+    (r"OPER\.\s*CENT\s+Pago de Reemb|Pago de Reembolso",
+     "Fixed Costs", "Comisiones", "neutro"),
+    (r"OPER\.\s*CENT\s+Retiro",
+     "Investments", "Retiro inversión", "excluir"),
 
     # ── PAGOS A PROVEEDORES (gasto real) ──
     (r"P\.PROVEEDOR|PAGO PROVEEDOR|P\.PROV\b",
-     "Pago proveedor", "gasto", "-"),
+     "Fixed Costs", "Pago proveedor", "gasto"),
 
-    # ── EFECTIVO (gasto real, no se sabe en qué) ──
+    # ── EFECTIVO (gasto real) ──
     (r"Giro en Cajero|Cajero Autom[aá]tico|GIRO\s+CAJERO|Retiro Cajero",
-     "Efectivo", "gasto", "-"),
+     "Guilt Free", "Efectivo", "gasto"),
 
-    # ── SUELDO / INGRESOS LABORALES (ingreso) ──
+    # ── SUELDO / INGRESOS LABORALES ──
     (r"SUELDO|Remuneraci[oó]n|Hon\.\s+Profesional|Pago Sueldo|Liquidaci[oó]n",
-     "Sueldo", "ingreso", "+"),
+     "Ingresos", "Sueldo", "ingreso"),
     (r"Mercado Libre.*Sueldo|MLI.*Sueldo|Pago Mercado Libre",
-     "Sueldo", "ingreso", "+"),
+     "Ingresos", "Sueldo", "ingreso"),
 
     # ── PERSONAS IDENTIFICADAS (orden importa: específicas primero) ──
 
-    # Señora (María Begoña Alarcón) - movimientos compartidos del hogar
+    # Señora (María Begoña Alarcón)
     (r"MARIA BEGO|MARIA BEGONA",
-     "Pareja (María Begoña)", "neutro", "?"),
+     "Familia", "Pareja", "neutro"),
 
-    # Suegro (Rene Pablo Alarcón Lillo) - gastos de matrimonio
+    # Suegro (Rene Pablo Alarcón Lillo) - matrimonio
     (r"Rene Pablo Alarcon|RENE PABLO ALARCON",
-     "Matrimonio (suegro)", "neutro", "?"),
+     "Guilt Free", "Matrimonio", "neutro"),
 
-    # Dueña del depto (Veronica Morales) → ARRIENDO real
+    # Dueña depto (Veronica Morales) → ARRIENDO
     (r"Veronica Morales|VERONICA MORALES",
-     "Arriendo (dueña depto)", "gasto", "-"),
+     "Fixed Costs", "Arriendo", "gasto"),
 
-    # CARLOS LUIS AGUILERA - gasto de matrimonio (NO es familia)
+    # Carlos Luis AGUILERA → matrimonio (NO familia)
     (r"CARLOS LUIS AGUILERA|CARLOS LUIS AGUI\b",
-     "Matrimonio (Aguilera)", "gasto", "-"),
+     "Guilt Free", "Matrimonio", "gasto"),
 
-    # Padre (Carlos Luis Moller / Moller Parot) - 2 cuentas distintas pero misma persona
-    # ⚠️ Va DESPUÉS de Aguilera para que ese match gane si aplica
-    (r"Transf\.\s*CARLOS LUI(?!.*AGUILERA)|CARLOS LUIS MOLLER",
-     "Familia (padre)", "neutro", "?"),
+    # Padre (Carlos Luis Moller, sin Aguilera) y cuenta secundaria Moller Parot
+    (r"Transf\.?\s*(?:a\s+)?CARLOS LUI(?!.*AGUILERA)|CARLOS LUIS MOLLER",
+     "Familia", "Padre", "neutro"),
     (r"MOLLER PARO|Moller Parot",
-     "Familia (padre)", "neutro", "?"),
+     "Familia", "Padre", "neutro"),
 
-    # Familiar (Juan Andrés Ruiz Tagle)
+    # Familiar Juan Andrés Ruiz Tagle
     (r"Juan Andres Ruiz|JUAN ANDRES RUIZ",
-     "Familia", "neutro", "?"),
+     "Familia", "Familia", "neutro"),
 
-    # Amigo (Alejandro Barros)
+    # Amigo Alejandro Barros
     (r"Alejandro Barros|ALEJANDRO BARROS",
-     "Amigo", "neutro", "?"),
+     "Familia", "Amigo", "neutro"),
 
-    # Venta personal (Ronny Andrés González te compró un iPad)
+    # Venta personal (iPad) - Ronny Andrés
     (r"Ronny Andres Gonzalez|RONNY ANDRES GONZALEZ",
-     "Venta personal", "ingreso", "+"),
+     "Ingresos", "Venta personal", "ingreso"),
 
-    # Banquetera del matrimonio
+    # Banquetera matrimonio
     (r"RC BANQUETERIA|BANQUETERIA",
-     "Matrimonio (banquetera)", "gasto", "-"),
+     "Guilt Free", "Matrimonio", "gasto"),
 
-    # Inversión crypto antigua (Smash SpA)
-    (r"Smash SpA|SMASH SPA",
-     "Inversión", "excluir", "-"),
+    # Otros familiares con apellido Moller / Verderau / Tomas
+    (r"Transf\..*MOLLER\b(?!.*PARO)|Transf\..*VERDERAU|Transf\..*TOMAS|SOFIA MOLLER",
+     "Familia", "Familia", "neutro"),
 
-    # Inversión inmobiliaria (Physica PPC SpA)
-    (r"Physica PPC|PHYSICA PPC|PHYSICA SPA",
-     "Inversión inmobiliaria", "excluir", "-"),
-
-    # Renta 4 (inversiones)
-    (r"\bRENTA\b\s*4|RENTA 4|Renta 4",
-     "Inversión", "excluir", "-"),
-
-    # Otros familiares con apellido Moller / Verderau / Tomas (genérico, queda al final)
-    (r"Transf\..*MOLLER\b(?!.*PARO)|Transf\..*VERDERAU|Transf\..*TOMAS",
-     "Familia", "neutro", "?"),
-
-    # ── ARRIENDO / GGCC genérico (gasto recurrente) ──
+    # ── ARRIENDO / GGCC genérico ──
     (r"ARRIENDO|ARRENDAMIENTO|GASTOS COMUNES|GTO\s+COMUN|CONDOMINIO",
-     "Arriendo/GGCC", "gasto", "-"),
+     "Fixed Costs", "Arriendo", "gasto"),
 
-    # ── SERVICIOS BÁSICOS pagados por TEF (gasto) ──
+    # ── SERVICIOS BÁSICOS pagados por TEF ──
     (r"ENEL|CGE|CHILECTRA|AGUAS ANDINAS|ESVAL|METROGAS",
-     "Servicios básicos", "gasto", "-"),
+     "Fixed Costs", "Servicios", "gasto"),
     (r"ENTEL|CLARO|MOVISTAR|VTR|WOM",
-     "Servicios básicos", "gasto", "-"),
+     "Fixed Costs", "Servicios", "gasto"),
 
-    # ── OTRAS TRANSFERENCIAS SALIENTES (probable gasto) ──
+    # ── IMPUESTOS / SII ──
+    (r"\bSII\b|TESORERIA|IMPUESTO",
+     "Impuestos", "Impuestos", "gasto"),
+
+    # ── TRANSFERENCIAS SALIENTES GENÉRICAS (probable gasto/matrimonio) ──
     (r"Transf\.\s+a\b|Transf\.\s+Internet a otro|Transferencia a",
-     "Transferencia saliente", "gasto", "-"),
+     "Guilt Free", "Transferencia saliente", "gasto"),
 
     # ── DEFAULT — sin categorizar ──
     (r".*",
-     "Sin categorizar", "neutro", "?"),
+     "Sin Categorizar", "Otros", "neutro"),
 ]
 
-# Precompilar
-_COMPILED = [(re.compile(p, re.IGNORECASE), c, f, s) for p, c, f, s in REGLAS]
+_COMPILED = [(re.compile(p, re.IGNORECASE), tl, sub, conta)
+             for p, tl, sub, conta in REGLAS]
 
 
 def categorizar_cuenta(descripcion: str) -> Tuple[str, str, str]:
     """
-    Retorna (categoria, contabilidad, signo_sugerido) para una transferencia.
-
-    Ejemplos:
-        "Traspaso Internet a T. Crédito" → ("Pago TC", "excluir", "-")
-        "Inversión en Fondo Mutuo"       → ("Inversión", "excluir", "-")
-        "COM.MANTENCION PLAN"            → ("Comisiones bancarias", "gasto", "-")
-        "Transf. a MARIA BEGONA"         → ("Transferencia familia", "neutro", "-")
+    Retorna (top_level, subcategoria, contabilidad) para una transferencia.
     """
     if not descripcion:
-        return ("Sin categorizar", "neutro", "?")
-    desc_up = descripcion.strip()
-    for pat, cat, conta, signo in _COMPILED:
-        if pat.search(desc_up):
-            return (cat, conta, signo)
-    return ("Sin categorizar", "neutro", "?")
+        return ("Sin Categorizar", "Otros", "neutro")
+    d = descripcion.strip()
+    for pat, tl, sub, conta in _COMPILED:
+        if pat.search(d):
+            return (tl, sub, conta)
+    return ("Sin Categorizar", "Otros", "neutro")
 
 
 def categorizar_df(df):
-    """Agrega columnas 'cc_categoria', 'cc_contabilidad', 'cc_signo' a un DataFrame."""
+    """Agrega columnas 'cc_top_level', 'cc_subcategoria', 'cc_contabilidad' al DataFrame."""
     import pandas as pd
     if df.empty or "descripcion" not in df.columns:
         return df
     cats = df["descripcion"].apply(categorizar_cuenta)
-    df["cc_categoria"]    = cats.apply(lambda x: x[0])
-    df["cc_contabilidad"] = cats.apply(lambda x: x[1])
-    df["cc_signo"]        = cats.apply(lambda x: x[2])
+    df["cc_top_level"]    = cats.apply(lambda x: x[0])
+    df["cc_subcategoria"] = cats.apply(lambda x: x[1])
+    df["cc_contabilidad"] = cats.apply(lambda x: x[2])
+    # Compatibilidad hacia atrás
+    df["cc_categoria"]    = df["cc_subcategoria"]
     return df

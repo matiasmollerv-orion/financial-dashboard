@@ -56,6 +56,9 @@ REGLAS = [
      "Fixed Costs", "Pago TC"),
     (r"\d{1,2}/\d{2}/\d{4}\s+BANCO|\bBANCO\b.*\d{4}",
      "Fixed Costs", "Pago TC"),
+    # Pago TC USD: descripción tipo "US$ 887,01 09/06/2026 US$" (línea de cierre)
+    (r"^US\$\s+[\d.,]+\s+\d{1,2}/\d{2}/\d{4}\s+US\$\s*$",
+     "Fixed Costs", "Pago TC"),
     (r"PAGO TARJETA|PAG\.? ?TC\b|PAG CRED|PAGO CRED|PAGO MENSUAL TARJ",
      "Fixed Costs", "Pago TC"),
     (r"PAGO CON KUSHKI|PAGO FACIL|PAGO ONLINE|PAGO RAPIDO",
@@ -310,6 +313,32 @@ REGLAS = [
     # Regalos
     (r"REGALO\b|FLORISTER|FLORES\b|ANTOJERIA|NAVIDAD\b|D[IÍ]A.*MADRE",
      "Guilt Free", "Regalos"),
+
+    # ── Reglas adicionales para reducir "Sin Categorizar" ─────
+    # Abono de divisas (conversión, no es gasto real → Fixed Costs/Comisiones)
+    (r"ABONO DE DIVISAS|ABONO DIVISAS",
+     "Fixed Costs", "Comisiones"),
+    # Viajes a Brasil (descripciones con "BR" y montos en reales)
+    (r"\bBR\s+\d|FLORIANOPOLIS|SAO PAULO\b|RIO DE JANEIRO|BRASIL\b",
+     "Guilt Free", "Viajes"),
+    # MercadoPago variantes (MP *)
+    (r"^MP \*|MP\*\b|MERCADOPAGO|MERPAGO",
+     "Guilt Free", "Compras"),
+    # Aerolíneas / hoteles (BKG=Booking, THY=Turkish, agencias)
+    (r"BKG\*|BOOKING\.COM|AIRBNB|EXPEDIA|TURKISH AIR|\bTHY\d|TRIVAGO|DESPEGAR",
+     "Guilt Free", "Viajes"),
+    # Libros y educación online
+    (r"BUSCALIBRE|AMAZON KINDLE|GOODREADS|AUDIBLE",
+     "Guilt Free", "Compras"),
+    # Donaciones
+    (r"GOFUNDME|GFM\*|DONACION",
+     "Guilt Free", "Regalos"),
+    # Tennis Warehouse y similares de deporte
+    (r"TENNIS WAREHOUSE|FULL TENIS|WILSON SPORT",
+     "Guilt Free", "Deportes/Bienestar"),
+    # PREPAGO EN CUOTAS — pagos de cuotas TC (excluir)
+    (r"PREPAGO EN CUOTAS|CUOTAS\b.*PAGO|PAGO CUOTA",
+     "Fixed Costs", "Pago TC"),
 
 ]
 
