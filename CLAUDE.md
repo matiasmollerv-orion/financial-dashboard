@@ -20,6 +20,7 @@
 | `load_santander.py --days 14` | `santander_gastos`, `santander_cuenta` | Tarjeta CLP/USD + cuenta corriente |
 | `load_racional_ventas.py --days 14` | `racional_transacciones` (tipo=venta) | Ventas "Vendiste X (TICKER)" |
 | `load_racional.py --days 14` | `racional_transacciones` (tipo=compra) | Compras "Invertiste en X (TICKER)" + portafolio nacional |
+| `load_racional_pdf.py --days 14` | `racional_transacciones` | Transacciones desde PDFs DriveWealth (cubre DCA, rebalanceo, ventas no capturadas por emails individuales) |
 | `load_buda.py --days 14` | `buda_crypto` | Compras programadas BTC/ETH |
 | `intelligence/reconcile_notifications.py` | `santander_gastos` | Reconciliación notif iPhone vs PDF |
 | `update_cartera.py` | `cartera_actual` | Aplica compras/ventas Racional+Buda sobre snapshot base y refresca precios via yfinance |
@@ -27,10 +28,14 @@
 **TODOS estos pasos están en daily-update.yml con `continue-on-error: true`** — si uno falla, los demás siguen.
 
 ### ⚠️ cartera_actual NO es estática
-- Base: snapshot manual al 2026-04-30 vía `load_portfolio.py` (datos hardcoded)
-- `update_cartera.py` lo lee y aplica todos los movimientos de `racional_transacciones` + `buda_crypto` posteriores a la fecha base
+- Base: snapshot manual al 2026-05-31 vía `cartera_base.py` (datos hardcoded)
+- `update_cartera.py` lo lee y aplica todos los movimientos de `racional_transacciones` + `buda_crypto` posteriores al 2026-05-31
 - Después refresca precios con yfinance (incluyendo `.SN` para Chile y `-USD` para crypto)
-- NUNCA editar `load_portfolio.py` para "actualizar" — solo modificarlo si cambia la base; los movimientos se aplican automáticamente
+- NUNCA editar `cartera_base.py` para "actualizar" a diario — solo modificarlo al cierre de mes con nueva cartola PDF; los movimientos se aplican automáticamente
+- Santander Corredora stocks usan sufijo `_STG` (ENELCHILE_STG, ENJOY_STG, LTM_STG) para distinguir de posiciones Racional
+- Nacional: incluye 20 stocks Racional + 3 Santander Corredora (ENELCHILE_STG, ENJOY_STG, LTM_STG) + fondos (CFMITNIPSA)
+- Internacional: 65 posiciones exactas del PDF DriveWealth (8 decimales)
+- Crypto: BTC y ETH con cantidades base; Buda compras se acumulan automáticamente
 
 **NO automatizado (carga manual ocasional):**
 - `load_to_supabase.py` → Vector Capital (vector_capital_comprobantes) — comprobantes esporádicos
@@ -57,10 +62,15 @@ extractors/
   racional_email.py   ← parser compras/ventas Racional
 intelligence/
   schema.sql          ← SQL para crear tablas market_news, market_intelligence, portfolio_alerts
-  news_fetcher.py     ← RSS → market_news (filtro por ticker + macro keywords)
-  portfolio_health.py ← análisis independiente de cartera → portfolio_alerts
-  ai_analyst.py       ← Claude analiza noticias pendientes → market_intelligence
-  daily_brief.py      ← Daily Brief consolidado (1×día)
+  config/
+    watchlist.yaml    ← Fuente de verdad: 25 recurrentes, watchlist tiers, entry targets, buckets, 13F, pendientes
+    rules.yaml        ← Reglas Connors DIP + filtros globales
+  news_fetcher.py     ← RSS → market_news (cartera + watchlist tickers + bucket keywords)
+  opportunity_detector.py ← v2: Connors rules + entry targets + Tier 2 triggers + acciones pendientes
+  ai_analyst.py       ← v2: Claude analiza noticias con contexto de watchlist/buckets
+  daily_brief.py      ← v2: Max 5 alertas accionables (JSON estructurado)
+  report_builder.py   ← v2: Email limpio con alert cards + portfolio compact
+  portfolio_health.py ← análisis independiente de cartera (concentración, drawdown, etc.)
 load_santander.py     ← carga PDFs Santander a Supabase
 load_racional_ventas.py ← carga ventas Racional
 load_racional.py      ← carga compras Racional
@@ -226,6 +236,33 @@ Si cambias HEAT_RANGE, recalcula la posición del gris: `pos_gris = (0 - min) / 
 2. Outliers: monto > Q3 + 3×IQR por subcategoría (mín. 4 transacciones)
 3. Sin categorizar > $30.000
 4. Cobros en USD en tarjeta nacional
+
+## Sistema de Alertas v2 (intelligence/)
+Pipeline diario: news_fetcher → ai_analyst → opportunity_detector → daily_brief → report_builder → email_sender
+
+### Filosofia
+- MAX 5 alertas por email. Menos es mejor.
+- Una alerta NO es estar en rojo en una posicion (eso es ruido).
+- Una alerta SI es: oportunidad de compra (DIP), entry target alcanzado, noticia que crea oportunidad, accion pendiente urgente.
+- Prioridad: oportunidades > riesgos.
+
+### watchlist.yaml — Fuente de verdad
+- 25 tickers recurrentes (DCA semanal ~USD 1,802/mes)
+- Watchlist Tier 1 (entry targets definidos), Tier 2 (triggers), Tier 3 (seguimiento)
+- Acciones pendientes con urgencia
+- Buckets tematicos con keywords para cross-reference con noticias
+- Smart money funds (15) con CIK para 13F tracking
+- Conferencias tech con calendario
+- ETFs core que NUNCA alertan
+- Sincronizar con CONTEXT.md cuando cambie el plan
+
+### Flujo de alertas
+1. `news_fetcher`: busca noticias RSS para cartera + watchlist tickers + bucket keywords
+2. `ai_analyst`: Claude analiza cada noticia con contexto de cartera + watchlist + buckets. Identifica si crea oportunidad de watchlist.
+3. `opportunity_detector`: Connors DIP rules (chico/medio/grande/crash) + entry targets Tier 1 + triggers Tier 2 + acciones pendientes
+4. `daily_brief`: Claude consolida todo y genera MAX 5 alertas JSON con tipo/ticker/monto/urgencia
+5. `report_builder`: construye email limpio con alert cards
+6. `email_sender`: envia via Gmail SMTP
 
 ## Python
 - venv en `venv/` con Python 3.9 (pendiente migrar a 3.12)

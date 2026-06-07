@@ -145,6 +145,7 @@ def render():
             "YTD (este año)":      (date(hoy.year, 1, 1).isoformat(), hoy.isoformat()),
             "Últimos 12 meses":    ((hoy - timedelta(days=365)).isoformat(), hoy.isoformat()),
             "Desde snapshot Racional": (_snap, hoy.isoformat()),
+            "Desde el inicio (2022)":  ("2022-09-01", hoy.isoformat()),
         }
 
         col_p1, col_p2 = st.columns([1, 2])
@@ -160,14 +161,12 @@ def render():
             st.markdown(f"<br><span style='color:#888;'>Calculando {start_date} → {end_date}</span>",
                         unsafe_allow_html=True)
 
-        # ⚠️ Limitar período: no podemos calcular antes del snapshot (no tenemos historial)
+        # Nota informativa si el período es pre-snapshot (ahora SÍ soportado)
         if pd.Timestamp(start_date) < pd.Timestamp(_snap):
-            st.warning(
-                f"⚠️ El período pedido empieza antes del snapshot ({_snap}). "
-                f"Para esas fechas no tenemos historial de transacciones, así que el cálculo "
-                f"empezará desde {_snap}."
+            st.info(
+                f"ℹ️ Período pre-snapshot ({start_date} → {_snap}): "
+                f"reconstruyendo posiciones desde historial completo de transacciones."
             )
-            start_date = _snap
 
         # ── TWR Pre-snapshot (solo relevante si período = desde snapshot) ──
         if periodo_sel == "Desde snapshot Racional":

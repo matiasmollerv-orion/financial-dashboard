@@ -73,28 +73,66 @@ MACRO_KEYWORDS = {
     "Crypto":              ["bitcoin", "btc ", "ethereum", "eth ", "crypto", "satoshi"],
 }
 
-# Sectores y sinónimos
+# Sectores y sinonimos (incluye buckets de watchlist)
 SECTOR_KEYWORDS = {
-    "Tecnología":          ["tech ", "technology", "software", "semiconductors", "chips", "ai ", "artificial intelligence"],
+    "Tecnologia":          ["tech ", "technology", "software", "semiconductors", "chips", "ai ", "artificial intelligence"],
     "Financiero":          ["bank ", "banking", "financial", "insurance"],
-    "Energía":             ["oil ", "crude", "opec", "energy ", "renewable"],
-    "Salud":               ["pharma", "healthcare", "biotech", "fda "],
+    "Energia":             ["oil ", "crude", "opec", "energy ", "renewable"],
+    "Salud":               ["pharma", "healthcare", "biotech", "fda ", "glp-1", "ozempic", "weight loss", "mounjaro"],
     "Retail/Consumo":      ["retail ", "consumer", "amazon", "walmart"],
-    "Aviación":            ["airline", "boeing", "airbus", "aviation"],
-    "Minería":             ["copper", "lithium", "mining", "cobre", "litio"],
+    "Aviacion":            ["airline", "boeing", "airbus", "aviation"],
+    "Mineria":             ["copper", "lithium", "mining", "cobre", "litio", "uranium", "nuclear"],
+    "IA/GPU":              ["gpu", "cuda", "blackwell", "nvlink", "custom silicon", "asic", "inference", "training"],
+    "Neocloud":            ["coreweave", "nebius", "cerebras", "neocloud", "gpu-as-a-service"],
+    "Nuclear/SMR":         ["nuclear", "smr", "uranium", "fission", "modular reactor", "small modular"],
+    "Defense":             ["defense", "dod", "drone", "military", "pentagon"],
+    "Space":               ["rocket", "satellite", "orbit", "launch", "space economy", "spacex"],
+    "Power/Grid":          ["power grid", "data center power", "electrification", "utility"],
+    "Photonics":           ["photonics", "optical", "transceiver", "coherent"],
+    "13F/Smart Money":     ["13f filing", "hedge fund", "berkshire", "bridgewater", "scion asset"],
 }
 
 
 # ── HELPERS ──────────────────────────────────────────────────
 def get_portfolio_tickers() -> set[str]:
-    """Lee la cartera actual desde Supabase y retorna tickers únicos."""
+    """Lee la cartera actual + watchlist desde Supabase/YAML y retorna tickers unicos."""
+    import yaml
+    from pathlib import Path
+
     sb = get_client()
-    r = sb.table("cartera_actual").select("ticker,mercado").execute()
     tickers = set()
+
+    # 1. Cartera actual
+    r = sb.table("cartera_actual").select("ticker,mercado").execute()
     for row in r.data:
         tk = (row.get("ticker") or "").upper().strip()
         if tk and tk != "PORTFOLIO_CL":
             tickers.add(tk)
+
+    # 2. Watchlist tickers (all tiers + recurrente + pendientes)
+    wl_path = Path(__file__).parent / "config" / "watchlist.yaml"
+    try:
+        with open(wl_path, encoding="utf-8") as f:
+            wl = yaml.safe_load(f)
+
+        for item in wl.get("recurrente", []):
+            tk = (item.get("ticker") or "").upper().strip()
+            if tk:
+                tickers.add(tk)
+
+        for tier_key in ["tier1", "tier2", "tier3"]:
+            for item in wl.get("watchlist", {}).get(tier_key, []):
+                tk = (item.get("ticker") or "").upper().strip()
+                if tk:
+                    tickers.add(tk)
+
+        for item in wl.get("acciones_pendientes", []):
+            tk = (item.get("ticker") or "").upper().strip()
+            if tk:
+                tickers.add(tk)
+    except FileNotFoundError:
+        pass
+
     return tickers
 
 
@@ -220,12 +258,30 @@ def fetch_all(hours_back: int = 24) -> list[dict]:
             print(f"❌ error: {e}")
 
     # === Feeds por ticker ===
-    # Tomar top 10 tickers por valor para no saturar
-    print(f"\n  📡 Yahoo Finance por ticker (top 10 cartera)...")
+    # Top cartera + Tier 1 watchlist tickers
+    print(f"\n  📡 Yahoo Finance por ticker (cartera + watchlist)...")
     sb = get_client()
-    cart = sb.table("cartera_actual").select("ticker").execute()
-    top_tickers = list({(r.get("ticker") or "").upper() for r in cart.data
-                        if r.get("ticker") and r.get("ticker") != "PORTFOLIO_CL"})[:10]
+    cart = sb.table("cartera_actual").select("ticker,valor_usd").execute()
+    # Sort by value, take top 10
+    import yaml as _yaml
+    from pathlib import Path as _Path
+    cart_sorted = sorted(cart.data, key=lambda r: float(r.get("valor_usd") or 0), reverse=True)
+    top_tickers = list({(r.get("ticker") or "").upper() for r in cart_sorted[:10]
+                        if r.get("ticker") and r.get("ticker") != "PORTFOLIO_CL"})
+    # Add Tier 1 + acciones pendientes
+    try:
+        with open(_Path(__file__).parent / "config" / "watchlist.yaml", encoding="utf-8") as _f:
+            _wl = _yaml.safe_load(_f)
+        for item in _wl.get("watchlist", {}).get("tier1", []):
+            tk = (item.get("ticker") or "").upper()
+            if tk and tk not in top_tickers:
+                top_tickers.append(tk)
+        for item in _wl.get("acciones_pendientes", []):
+            tk = (item.get("ticker") or "").upper()
+            if tk and tk not in top_tickers:
+                top_tickers.append(tk)
+    except Exception:
+        pass
 
     for tk in top_tickers:
         try:

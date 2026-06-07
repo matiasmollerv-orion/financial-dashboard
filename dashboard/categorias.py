@@ -64,6 +64,14 @@ REGLAS = [
     (r"PAGO CON KUSHKI|PAGO FACIL|PAGO ONLINE|PAGO RAPIDO",
      "Fixed Costs", "Pago TC"),
 
+    # Pago TC USD (abono de divisas = pago de tarjeta en dólares, NO es gasto)
+    (r"ABONO DE DIVISAS|ABONO DIVISAS",
+     "Fixed Costs", "Pago TC"),
+    (r"AVANCE Y COMPRA DE DIVISAS|AVANCE.*COMPRA.*DIVIS|COMPRA DE DIVISAS",
+     "Fixed Costs", "Pago TC"),
+    (r"TRASPASO DE DEUDA INTERNACIO|DEUDA INTERNACIO",
+     "Fixed Costs", "Pago TC"),
+
     # Comisiones bancarias
     (r"NOTA DE CREDITO|NOTA CREDITO|N/C\b",
      "Fixed Costs", "Comisiones"),
@@ -73,7 +81,7 @@ REGLAS = [
      "Fixed Costs", "Comisiones"),
     (r"DEVOLUC|DEVOLUCION|REEMBOLSO|CASHBACK",
      "Fixed Costs", "Comisiones"),
-    (r"AVANCE\b|AVANCE Y COMPRA|COMPRA DIVISAS|CUOTA FIJA\b",
+    (r"AVANCE\b|CUOTA FIJA\b",
      "Fixed Costs", "Comisiones"),
     (r"PUNTO PAGOS|PAGOS MASIVOS|WEF\d+",
      "Fixed Costs", "Comisiones"),
@@ -315,9 +323,7 @@ REGLAS = [
      "Guilt Free", "Regalos"),
 
     # ── Reglas adicionales para reducir "Sin Categorizar" ─────
-    # Abono de divisas (conversión, no es gasto real → Fixed Costs/Comisiones)
-    (r"ABONO DE DIVISAS|ABONO DIVISAS",
-     "Fixed Costs", "Comisiones"),
+
     # Viajes a Brasil (descripciones con "BR" y montos en reales)
     (r"\bBR\s+\d|FLORIANOPOLIS|SAO PAULO\b|RIO DE JANEIRO|BRASIL\b",
      "Guilt Free", "Viajes"),
@@ -339,6 +345,90 @@ REGLAS = [
     # PREPAGO EN CUOTAS — pagos de cuotas TC (excluir)
     (r"PREPAGO EN CUOTAS|CUOTAS\b.*PAGO|PAGO CUOTA",
      "Fixed Costs", "Pago TC"),
+
+    # ── Inversiones / Trading ───────────────────────────────
+    (r"ETORO|E\*?TORO",
+     "Investments", "Inversión"),
+    (r"BUY DIGITAL ASSET|DIGITAL ASSET",
+     "Investments", "Inversión"),
+
+    # ── Arriendo de autos / Viajes internacionales ──────────
+    (r"HERTZ|AVIS\b|BUDGET\b|EUROPCAR|SIXT\b|SICILY BY CAR|RENT.?A.?CAR",
+     "Guilt Free", "Viajes"),
+    (r"RYANAIR|EASYJET|VUELING|WIZZAIR|VOLOTEA|TRANSAVIA|FLIXBUS",
+     "Guilt Free", "Viajes"),
+    (r"TRENITALIA|ITALO\b|RENFE\b|EUROSTAR|THALYS",
+     "Guilt Free", "Viajes"),
+    # Destinos internacionales (IT=Italia, PE=Perú, US=EEUU, DE=Alemania, etc.)
+    (r"\bIT\s*$|\bIT\s+\d|ROMA\b|MILAN[OÓ]?\b|GALATINA|LECCE\b|FIRENZE|NAPOLI|CARINI\b|INTESASPAO",
+     "Guilt Free", "Viajes"),
+    (r"LIMA\b.*PE|CUSCO\b|PICANTERIA|TERMINAL PESQUERO|MARKET CICALA",
+     "Guilt Free", "Viajes"),
+    (r"MIAMI\b|PARADISE.*FAC\b|PARADISE MIAMI",
+     "Guilt Free", "Viajes"),
+    (r"\bBERLIN\b|\bPARIS\b.*FR|\bLONDON\b|\bMADRID\b",
+     "Guilt Free", "Viajes"),
+
+    # ── Compras online internacionales ──────────────────────
+    (r"OAKLEY|RAY.?BAN|SUNGLASSES|LENTES DE SOL",
+     "Guilt Free", "Compras"),
+    (r"STOCKX|STOCK X",
+     "Guilt Free", "Compras"),
+    (r"GYMSHARK|GYM SHARK",
+     "Guilt Free", "For me"),
+    (r"RIDE CONCEPTS|COMMENCAL|CANYON\b.*BIKE|SPECIALIZED|TREK\b.*BIKE",
+     "Guilt Free", "Deportes/Bienestar"),
+    (r"WHOOP\b|GARMIN\b|FITBIT\b|POLAR\b.*SPORT",
+     "Guilt Free", "Deportes/Bienestar"),
+    (r"CASETIFY|RHINOSHIELD|DBRAND",
+     "Guilt Free", "Compras"),
+    (r"MOS\b.*MEMBERSHIP|MOS\b.*NEW YORK",
+     "Fixed Costs", "Servicios"),
+    (r"LINKEDIN|LINKED IN",
+     "Fixed Costs", "Servicios"),
+    (r"WALLAPOP|YAPO\b|CHILEAUTOS",
+     "Guilt Free", "Compras"),
+    (r"PAYPAL\b",
+     "Guilt Free", "Compras"),
+
+    # ── Direcciones / lugares chilenos ──────────────────────
+    (r"APOQUINDO|AV\.\s*LAS CONDES|AV\.\s*PROVIDENCIA|AV\.\s*VITACURA",
+     "Guilt Free", "Restoran/Social"),
+    (r"LIMITE SUR|AMBAR\b|LIGURIA\b|GIRATO\b|ACONTRALUZ\b",
+     "Guilt Free", "Restoran/Social"),
+    # SB 794 y similares (probablemente comercios locales por dirección)
+    (r"^SB\s+\d+$",
+     "Guilt Free", "Compras"),
+    # eDreams (plataforma de vuelos)
+    (r"EDREAMS|E-?DREAMS",
+     "Guilt Free", "Viajes"),
+    # Tiendas de ropa / retail conocidos
+    (r"VICTORIA SECRET|BROOKS BROTHERS|RALPH LAUREN|TOMMY HILFIGER|CALVIN KLEIN",
+     "Guilt Free", "For me"),
+    # Autoservicios / almacenes por nombre
+    (r"AUTOSERVICIO|AUTO SERVICIO",
+     "Fixed Costs", "Supermercado"),
+    # Imagenología / radiología (salud)
+    (r"IMAGENOLOG[IÍ]A|RESONANCIA|SCANNER|TAC\b",
+     "Fixed Costs", "Salud"),
+    # Gasolineras España (E.S. = Estación de Servicio)
+    (r"^E\.S\.\b|ESTACION DE SERV",
+     "Fixed Costs", "Transporte"),
+    # Argentina (cobros en AR pesos)
+    (r"\bAR\s+[\d.,]+$|BUENOS AIRES|MENDOZA\b|BARILOCHE",
+     "Guilt Free", "Viajes"),
+    # Diario Financiero
+    (r"DF WEBPAY|DIARIO FINANCIERO",
+     "Fixed Costs", "Servicios"),
+    # Amazon variantes (AMZN MKTP)
+    (r"AMZN\b|AMZN MKTP",
+     "Guilt Free", "Compras"),
+    # Personas / transferencias locales (MARI Y CECILIA, TAPIA Y CRUZ, etc.)
+    (r"MARI Y CECILIA|TAPIA Y CRUZ",
+     "Fixed Costs", "Servicios"),
+    # RedGloba (internet/servicios)
+    (r"REDGLOBA",
+     "Fixed Costs", "Servicios"),
 
 ]
 

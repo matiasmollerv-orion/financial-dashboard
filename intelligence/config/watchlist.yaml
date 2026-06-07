@@ -1,0 +1,139 @@
+# =============================================================================
+# WATCHLIST & PORTFOLIO CONTEXT
+# Fuente de verdad para el sistema de alertas.
+# Sincronizar con CONTEXT.md cuando cambie el plan.
+# Última actualización: 5 junio 2026
+# =============================================================================
+
+# ── PLAN RECURRENTE (25 tickers, semanal martes) ─────────────────────────────
+# Aporte real: ~USD 416/sem = USD 1.802/mes
+recurrente:
+  - { ticker: NU,   usd_sem: 40, bucket: "Convicción LatAm",    tesis: "LatAm fintech 100M+ usuarios, ROE 30%+" }
+  - { ticker: MELI, usd_sem: 25, bucket: "Convicción LatAm",    tesis: "Ecommerce + Mercado Pago" }
+  - { ticker: VTI,  usd_sem: 30, bucket: "Core USA",            tesis: "Total market cap-weighted" }
+  - { ticker: VXUS, usd_sem: 45, bucket: "Internacional",       tesis: "Developed + EM ex-US" }
+  - { ticker: VWO,  usd_sem: 15, bucket: "EM broad",            tesis: "CAPE ~13 vs USA ~35" }
+  - { ticker: EWY,  usd_sem: 15, bucket: "Korea overweight",    tesis: "Samsung + SK Hynix HBM" }
+  - { ticker: INDA, usd_sem: 13, bucket: "India overweight",    tesis: "6-7% GDP growth secular" }
+  - { ticker: ILF,  usd_sem: 8,  bucket: "LatAm overweight",   tesis: "Brasil+Mexico+Chile valuaciones bajas" }
+  - { ticker: NVDA, usd_sem: 25, bucket: "IA core",             tesis: "GPU monopolio, Blackwell/Rubin" }
+  - { ticker: TSM,  usd_sem: 18, bucket: "IA foundry",          tesis: "Sub-7nm insustituible" }
+  - { ticker: ASML, usd_sem: 14, bucket: "IA litografía",       tesis: "Monopolio EUV" }
+  - { ticker: MU,   usd_sem: 12, bucket: "IA memory",           tesis: "HBM sold-out 2026" }
+  - { ticker: MSFT, usd_sem: 13, bucket: "IA cloud",            tesis: "Azure + OpenAI partnership" }
+  - { ticker: AVGO, usd_sem: 8,  bucket: "IA custom silicon",   tesis: "Bridgewater 13F Q1" }
+  - { ticker: GOOGL,usd_sem: 10, bucket: "Mag7",                tesis: "Anthropic + Waymo, Berkshire triplicó" }
+  - { ticker: AMZN, usd_sem: 10, bucket: "Mag7",                tesis: "AWS, Tepper+Ackman+Bridgewater 13F" }
+  - { ticker: CRWV, usd_sem: 8,  bucket: "Neocloud",            tesis: "USD 99B backlog, OpenAI client" }
+  - { ticker: NBIS, usd_sem: 8,  bucket: "Neocloud",            tesis: "Balance limpio USD 3.7B cash" }
+  - { ticker: OKLO, usd_sem: 18, bucket: "Nuclear/SMR",         tesis: "Pure-play SMR (pre-revenue, volátil)" }
+  - { ticker: ARES, usd_sem: 15, bucket: "Private credit",      tesis: "Financia gap CapEx/FCF hyperscalers" }
+  - { ticker: GLDM, usd_sem: 15, bucket: "Oro hedge",           tesis: "Debasement monetario" }
+  - { ticker: LLY,  usd_sem: 13, bucket: "Healthcare/GLP-1",    tesis: "Líder Ozempic, Foundayo aprobado" }
+  - { ticker: UNH,  usd_sem: 20, bucket: "Healthcare",          tesis: "Goldman Conviction Buy, Optum" }
+  - { ticker: IONQ, usd_sem: 10, bucket: "Quantum 20y",         tesis: "Revenue +755% YoY, gov USD 2B funding" }
+  - { ticker: CCJ,  usd_sem: 8,  bucket: "Uranio",              tesis: "Renacimiento nuclear" }
+
+# ── WATCHLIST: ENTRY TARGETS ─────────────────────────────────────────────────
+# Tier 1: Alta convicción, entry target definido
+# Tier 2: Monitoreo activo, entry oportunístico
+# Tier 3: Seguimiento, sin acción inmediata
+watchlist:
+  tier1:
+    - { ticker: MRVL, nombre: "Marvell Technology",   entry_usd: [220, 235], size_usd: [300, 500], bucket: "IA custom silicon",  tesis: "Custom silicon + NVLink Fusion. NVDA invirtió USD 2B. Design wins Amazon/Google/MSFT" }
+    - { ticker: UBER, nombre: "Uber Technologies",    entry_usd: [70, 75],   size_usd: [400, 600], bucket: "Logística",          tesis: "OS logístico urbano. FCF USD 9.8B. Uber One 50M. Tepper+Ackman compraron Q1" }
+    - { ticker: CBRS, nombre: "Cerebras Systems",     entry_usd: [200, 220], size_usd: [300, 500], bucket: "Neocloud",           tesis: "Único challenger NVDA listed. IPO mayo 2026. USD 99B OpenAI deal" }
+    - { ticker: KTOS, nombre: "Kratos Defense",        entry_usd: null,       size_usd: [1000, 1000], bucket: "Defense",          tesis: "Drones + DoD contracts, Trump pro-defense. Compra única junio" }
+    - { ticker: RKLB, nombre: "Rocket Lab",            entry_usd: null,       size_usd: [600, 600],  bucket: "Space",             tesis: "Space economy infrastructure. Compra única junio" }
+
+  tier2:
+    - { ticker: COHR, nombre: "Coherent Corp",         trigger: "caída >10%",  bucket: "Photonics",   tesis: "Optical interconnects data centers" }
+    - { ticker: AVAV, nombre: "AeroVironment",         trigger: "bajo USD 150", bucket: "Defense",    tesis: "Drones tácticos (Switchblade)" }
+    - { ticker: ASTS, nombre: "AST SpaceMobile",       trigger: "monitorear",  bucket: "Space",       tesis: "Satellite-to-cell broadband" }
+    - { ticker: GEV,  nombre: "GE Vernova",            trigger: "caída >10%",  bucket: "Power/Grid",  tesis: "Power grid + nuclear" }
+    - { ticker: VST,  nombre: "Vistra Corp",           trigger: "caída >10%",  bucket: "Power/Grid",  tesis: "Power for AI data centers" }
+    - { ticker: PONY, nombre: "Pony.ai",               trigger: "oportunística", bucket: "Robotaxi",  tesis: "Robotaxi China, GAAP profit Q4 2025" }
+    - { ticker: HOOD, nombre: "Robinhood",             trigger: "oportunística", bucket: "Fintech",   tesis: "Crypto + retail trading" }
+    - { ticker: SYM,  nombre: "Symbotic",              trigger: "oportunística", bucket: "Robotics",  tesis: "Robotic warehouse automation" }
+
+  tier3:
+    - { ticker: LITE, nombre: "Lumentum",              bucket: "Photonics" }
+    - { ticker: AAOI, nombre: "Applied Optoelectronics", bucket: "Photonics" }
+    - { ticker: QCOM, nombre: "Qualcomm",              bucket: "Edge AI" }
+    - { ticker: RXRX, nombre: "Recursion Pharma",      bucket: "AI drug discovery" }
+    - { ticker: RGTI, nombre: "Rigetti",                bucket: "Quantum" }
+    - { ticker: RDW,  nombre: "Redwire",                bucket: "Space" }
+    - { ticker: SDGR, nombre: "Schrodinger",            bucket: "AI drug discovery" }
+
+# ── ACCIONES PENDIENTES ──────────────────────────────────────────────────────
+acciones_pendientes:
+  - { ticker: NVDA, accion: "COMPRAR", monto_usd: 2000, urgencia: "alta",  nota: "Post-earnings ya pasaron" }
+  - { ticker: AVGO, accion: "COMPRAR", monto_usd: 400,  urgencia: "alta",  nota: "DIP -15% post-earnings" }
+  - { ticker: KTOS, accion: "COMPRAR", monto_usd: 1000, urgencia: "media", nota: "Defense bucket, junio" }
+  - { ticker: RKLB, accion: "COMPRAR", monto_usd: 600,  urgencia: "media", nota: "Space bucket, junio" }
+  - { ticker: UBER, accion: "COMPRAR", monto_usd: 500,  urgencia: "baja",  nota: "Cuando haya cash, USD 72 actual" }
+  - { ticker: MRVL, accion: "COMPRAR", monto_usd: 400,  urgencia: "baja",  nota: "Esperar pullback USD 220-235" }
+  - { ticker: VCX,  accion: "VENDER",  monto_usd: null,  urgencia: "alta",  nota: "Lockup expira septiembre 2026, premium 390% NAV" }
+
+# ── BUCKETS TEMÁTICOS ────────────────────────────────────────────────────────
+# Para que el AI analyst pueda sugerir tickers nuevos dentro de buckets existentes
+buckets:
+  - { nombre: "IA core",           keywords: ["GPU", "AI chip", "inference", "training", "CUDA", "Blackwell"] }
+  - { nombre: "IA custom silicon", keywords: ["custom silicon", "ASIC", "interconnect", "NVLink", "optical"] }
+  - { nombre: "IA cloud",          keywords: ["Azure", "AWS", "GCP", "cloud AI", "hyperscaler"] }
+  - { nombre: "Neocloud",          keywords: ["CoreWeave", "Nebius", "Cerebras", "neocloud", "GPU-as-a-service"] }
+  - { nombre: "Nuclear/SMR",       keywords: ["nuclear", "SMR", "uranium", "fission", "modular reactor"] }
+  - { nombre: "Defense",           keywords: ["defense", "DoD", "drone", "military", "Pentagon"] }
+  - { nombre: "Space",             keywords: ["rocket", "satellite", "orbit", "launch", "space economy"] }
+  - { nombre: "Healthcare/GLP-1",  keywords: ["GLP-1", "Ozempic", "weight loss", "Mounjaro", "obesity"] }
+  - { nombre: "Convicción LatAm",  keywords: ["Nubank", "MercadoLibre", "LatAm fintech", "Brazil fintech"] }
+  - { nombre: "Power/Grid",        keywords: ["power grid", "data center power", "electrification", "utility"] }
+  - { nombre: "Photonics",         keywords: ["photonics", "optical", "fiber", "coherent", "transceiver"] }
+  - { nombre: "Quantum",           keywords: ["quantum computing", "qubit", "quantum advantage"] }
+  - { nombre: "Robotics",          keywords: ["warehouse robot", "automation", "robotic", "humanoid"] }
+
+# ── ETFs CORE (solo DCA, nunca alertar) ──────────────────────────────────────
+etfs_core_no_alert:
+  - VTI
+  - VOO
+  - VXUS
+  - VWO
+  - VT
+  - BND
+  - BNDX
+  - IEF
+  - VGSH
+  - VTIP
+  - SCHP
+
+# ── SMART MONEY (13F tracking) ───────────────────────────────────────────────
+smart_money_funds:
+  - { nombre: "Berkshire Hathaway",  pm: "Greg Abel",        cik: "0001067983" }
+  - { nombre: "Pershing Square",     pm: "Bill Ackman",      cik: "0001336528" }
+  - { nombre: "Bridgewater",         pm: "Ray Dalio",        cik: "0001350694" }
+  - { nombre: "Appaloosa",           pm: "David Tepper",     cik: "0001656456" }
+  - { nombre: "Duquesne",            pm: "Druckenmiller",    cik: "0001536411" }
+  - { nombre: "Third Point",         pm: "Dan Loeb",         cik: "0001040273" }
+  - { nombre: "Tiger Global",        pm: "Chase Coleman",    cik: "0001167483" }
+  - { nombre: "Greenlight",          pm: "David Einhorn",    cik: "0001079114" }
+  - { nombre: "Scion",               pm: "Michael Burry",    cik: "0001649339" }
+  - { nombre: "ARK Invest",          pm: "Cathie Wood",      cik: "0001697748" }
+  - { nombre: "Renaissance",         pm: "Quant",            cik: "0001037389" }
+  - { nombre: "Citadel",             pm: "Ken Griffin",       cik: "0001423053" }
+  - { nombre: "Coatue",              pm: "Phil Laffont",     cik: "0001135730" }
+  - { nombre: "Light Street",        pm: "Glen Kacher",      cik: "0001541748" }
+  - { nombre: "Soroban",             pm: "Eric Mandelblatt", cik: "0001517137" }
+
+# ── CONFERENCIAS TECH ────────────────────────────────────────────────────────
+conferencias:
+  - { nombre: "NVIDIA GTC",     mes: 3,  tickers: [NVDA, MRVL, AVGO, TSM, ASML, MU, CRWV, NBIS] }
+  - { nombre: "Computex Taipei", mes: 6,  tickers: [NVDA, MRVL, TSM, AVGO, ASML, AMD] }
+  - { nombre: "Hot Chips",       mes: 8,  tickers: [NVDA, MRVL, AVGO, GOOGL, AMZN, MSFT] }
+  - { nombre: "AWS re:Invent",   mes: 12, tickers: [AMZN, NVDA, MRVL, AVGO, CRWV] }
+  - { nombre: "CES",             mes: 1,  tickers: [NVDA, TSM, MRVL] }
+
+# ── FECHAS 13F ───────────────────────────────────────────────────────────────
+fechas_13f:
+  - { quarter: "Q2 2026", deadline: "2026-08-14" }
+  - { quarter: "Q3 2026", deadline: "2026-11-14" }
+  - { quarter: "Q4 2026", deadline: "2027-02-14" }

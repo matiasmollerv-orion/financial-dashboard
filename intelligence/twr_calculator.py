@@ -99,21 +99,37 @@ def fetch_prices(yf_tickers: list, start: str, end: str) -> pd.DataFrame:
 
 
 # ── CÁLCULO PRINCIPAL ─────────────────────────────────────────
-def compute_twr(snapshot_date: str = SNAPSHOT_DATE,
+def compute_twr(start_date: str = SNAPSHOT_DATE,
                 end_date: str = None,
                 verbose: bool = True) -> dict:
+    """
+    Calcula TWR para cualquier período. Dos modos:
+      - Si start_date >= SNAPSHOT_DATE: usa cantidad_base del snapshot + deltas (modo original)
+      - Si start_date < SNAPSHOT_DATE: reconstruye posiciones desde cero usando TODO el
+        historial de transacciones (modo histórico completo)
+    """
     if end_date is None:
         end_date = date.today().isoformat()
 
+    # ¿Período pre-snapshot?
+    pre_snapshot = pd.Timestamp(start_date) < pd.Timestamp(SNAPSHOT_DATE)
+
     if verbose:
-        print(f"\n📅 Calculando TWR: {snapshot_date} → {end_date}")
+        mode = "HISTÓRICO (desde transacciones)" if pre_snapshot else "POST-SNAPSHOT (desde base)"
+        print(f"\n📅 Calculando TWR: {start_date} → {end_date} [{mode}]")
 
     # 1. Ticker meta
     meta = get_ticker_meta()
 
-    # 2. Transacciones Racional + Buda
-    rac = pd.DataFrame(fetch_all_pagination("racional_transacciones", "fecha", "gt", snapshot_date))
-    buda = pd.DataFrame(fetch_all_pagination("buda_crypto", "fecha", "gt", snapshot_date))
+    # 2. Transacciones — traer TODAS si modo histórico, o solo post-start si post-snapshot
+    if pre_snapshot:
+        # Modo histórico: traer TODAS las transacciones para reconstruir posiciones
+        rac = pd.DataFrame(fetch_all_pagination("racional_transacciones"))
+        buda = pd.DataFrame(fetch_all_pagination("buda_crypto"))
+    else:
+        rac = pd.DataFrame(fetch_all_pagination("racional_transacciones", "fecha", "gt", start_date))
+        buda = pd.DataFrame(fetch_all_pagination("buda_crypto", "fecha", "gt", start_date))
+
     if not rac.empty:
         rac["fecha"] = pd.to_datetime(rac["fecha"]).dt.tz_localize(None)
         for c in ["acciones", "monto_usd", "monto_clp"]:
@@ -125,7 +141,7 @@ def compute_twr(snapshot_date: str = SNAPSHOT_DATE,
     if verbose:
         print(f"   {len(rac)} transacciones Racional · {len(buda)} compras Buda")
 
-    # 3. Tickers nuevos en racional (no en base)
+    # 3. Descubrir todos los tickers que aparecen en transacciones
     if not rac.empty:
         for _, row in rac.iterrows():
             tk = row["ticker"]
@@ -138,44 +154,86 @@ def compute_twr(snapshot_date: str = SNAPSHOT_DATE,
 
     all_tickers = sorted(meta.keys())
 
-    # 4. Range de fechas (todos los días, incluyendo fines de semana para flujo)
-    dates = pd.date_range(snapshot_date, end_date, freq="D")
+    # 4. Range de fechas
+    dates = pd.date_range(start_date, end_date, freq="D")
 
     # 5. Construir DataFrame de cantidades diarias por ticker
-    # IMPORTANTE: dtype=float64 explícito + astype(float) por columna para evitar
-    # que pandas infiera int64 cuando cantidad_base es entero (ej. BCI=30)
-    qty_df = pd.DataFrame(
-        {tk: np.full(len(dates), float(meta[tk]["cantidad_base"]), dtype=np.float64)
-         for tk in all_tickers},
-        index=dates,
-    )
-    # Doble asegurar
-    qty_df = qty_df.astype(np.float64)
+    if pre_snapshot:
+        # Modo histórico: reconstruir posiciones desde TODAS las transacciones.
+        # Transacciones ANTES del start_date → posición inicial (se aplican a todo el rango).
+        # Transacciones DENTRO del período → se aplican desde su fecha en adelante.
+        start_ts = pd.Timestamp(start_date)
+        qty_df = pd.DataFrame(0.0, index=dates, columns=all_tickers)
 
-    if not rac.empty:
-        for _, row in rac.iterrows():
-            tk = row["ticker"]
-            if tk == "PORTFOLIO_CL" or tk not in qty_df.columns:
-                continue
-            if row["mercado"] == "nacional":
-                continue  # nacional son aportes agregados, no afectan cantidades unitarias en base
-            delta = float(row["acciones"]) if row["tipo"] == "compra" else -float(row["acciones"])
-            mask = qty_df.index >= row["fecha"].normalize()
-            qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + delta
+        if not rac.empty:
+            for _, row in rac.iterrows():
+                tk = row["ticker"]
+                if tk == "PORTFOLIO_CL" or tk not in qty_df.columns:
+                    continue
+                if row["mercado"] == "nacional":
+                    continue
+                delta = float(row["acciones"]) if row["tipo"] == "compra" else -float(row["acciones"])
+                tx_date = row["fecha"].normalize()
+                if tx_date < start_ts:
+                    # Transacción anterior al período → afecta TODA la serie (posición inicial)
+                    qty_df[tk] = qty_df[tk].astype(np.float64) + delta
+                else:
+                    # Transacción dentro del período → afecta desde su fecha
+                    mask = qty_df.index >= tx_date
+                    qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + delta
 
-    if not buda.empty:
-        for _, row in buda.iterrows():
-            tk = row["activo"]
-            if tk not in qty_df.columns:
-                continue
-            mask = qty_df.index >= row["fecha"].normalize()
-            qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + float(row["cantidad"])
+        if not buda.empty:
+            for _, row in buda.iterrows():
+                tk = row["activo"]
+                if tk not in qty_df.columns:
+                    qty_df[tk] = 0.0
+                    meta[tk] = {"mercado": "crypto", "moneda": "USD", "cantidad_base": 0}
+                    all_tickers = sorted(set(all_tickers + [tk]))
+                tx_date = row["fecha"].normalize()
+                if tx_date < start_ts:
+                    qty_df[tk] = qty_df[tk].astype(np.float64) + float(row["cantidad"])
+                else:
+                    mask = qty_df.index >= tx_date
+                    qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + float(row["cantidad"])
+
+        # Eliminar tickers que nunca tuvieron posición en el período
+        active_tickers = [tk for tk in qty_df.columns if qty_df[tk].abs().max() > 0]
+        qty_df = qty_df[active_tickers]
+        all_tickers = active_tickers
+
+    else:
+        # Modo post-snapshot: usar cantidad_base como antes
+        qty_df = pd.DataFrame(
+            {tk: np.full(len(dates), float(meta[tk]["cantidad_base"]), dtype=np.float64)
+             for tk in all_tickers},
+            index=dates,
+        )
+        qty_df = qty_df.astype(np.float64)
+
+        if not rac.empty:
+            for _, row in rac.iterrows():
+                tk = row["ticker"]
+                if tk == "PORTFOLIO_CL" or tk not in qty_df.columns:
+                    continue
+                if row["mercado"] == "nacional":
+                    continue
+                delta = float(row["acciones"]) if row["tipo"] == "compra" else -float(row["acciones"])
+                mask = qty_df.index >= row["fecha"].normalize()
+                qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + delta
+
+        if not buda.empty:
+            for _, row in buda.iterrows():
+                tk = row["activo"]
+                if tk not in qty_df.columns:
+                    continue
+                mask = qty_df.index >= row["fecha"].normalize()
+                qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + float(row["cantidad"])
 
     # 6. Descargar precios históricos
     yf_map = {tk: yf_ticker_for(tk, meta[tk]["mercado"]) for tk in all_tickers}
     yf_unique = list(set(yf_map.values()))
 
-    start_buf = (pd.Timestamp(snapshot_date) - timedelta(days=5)).strftime("%Y-%m-%d")
+    start_buf = (pd.Timestamp(start_date) - timedelta(days=5)).strftime("%Y-%m-%d")
     end_buf = (pd.Timestamp(end_date) + timedelta(days=2)).strftime("%Y-%m-%d")
 
     if verbose:

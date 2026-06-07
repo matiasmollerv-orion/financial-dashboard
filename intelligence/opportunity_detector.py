@@ -1,18 +1,14 @@
 # ============================================================
-# OPPORTUNITY DETECTOR — Reglas profesionales pre-comprometidas
+# OPPORTUNITY DETECTOR v2 — Watchlist + Cartera + Connors Rules
 #
-# Aplica las reglas de intelligence/config/rules.yaml sobre cada
-# posición de la cartera (y watchlist):
+# Carga watchlist.yaml (fuente de verdad) y aplica:
+#   1. Connors DIP rules sobre posiciones + watchlist
+#   2. Entry target checks para Tier 1 watchlist
+#   3. Acciones pendientes recordatorio
+#   4. Momentum warnings
 #
-#   🟡 DIP CHICO     -10% en 5d + filtros
-#   🟠 DIP MEDIO     -15% en 20d + filtros
-#   🔴 DIP GRANDE    -25% en 60d
-#   🚨 BEAR CRASH    -40% desde ATH (1y)
-#   ⚠️ MOMENTUM      +30% en 20d → considerar trim
-#   📈 NEAR ATH      <5% del ATH → solo info
-#
-# El sistema NO compra — solo alerta. Guarda en portfolio_alerts
-# con categoria='oportunidad_dip' o 'momentum_warning'.
+# NO compra — solo genera alertas en portfolio_alerts.
+# El daily_brief luego prioriza y selecciona las top 5.
 #
 # Uso:
 #   python -m intelligence.opportunity_detector
@@ -40,11 +36,17 @@ from database.supabase_client import get_client
 
 USD_CLP = 901.76
 RULES_PATH = Path(__file__).parent / "config" / "rules.yaml"
+WATCHLIST_PATH = Path(__file__).parent / "config" / "watchlist.yaml"
 
 
-# ── HELPERS ──────────────────────────────────────────────────
+# ── LOADERS ─────────────────────────────────────────────────
 def load_rules() -> dict:
     with open(RULES_PATH, encoding="utf-8") as f:
+        return yaml.safe_load(f)
+
+
+def load_watchlist_config() -> dict:
+    with open(WATCHLIST_PATH, encoding="utf-8") as f:
         return yaml.safe_load(f)
 
 
@@ -52,6 +54,8 @@ def load_cartera() -> pd.DataFrame:
     sb = get_client()
     r = sb.table("cartera_actual").select("*").execute()
     df = pd.DataFrame(r.data)
+    if df.empty:
+        return df
     for c in ["cantidad", "precio_compra", "precio_actual"]:
         df[c] = pd.to_numeric(df[c], errors="coerce")
     df["valor_usd"] = df["cantidad"] * df["precio_actual"]
@@ -70,8 +74,8 @@ def yf_ticker_for(ticker: str, mercado: str) -> str:
     return ticker
 
 
+# ── PRICE DATA ──────────────────────────────────────────────
 def fetch_history(yf_tickers: list, period: str = "1y") -> pd.DataFrame:
-    """Descarga precios + volumen históricos. Retorna multi-index (Close, Volume)."""
     try:
         import yfinance as yf
         raw = yf.download(
@@ -80,12 +84,11 @@ def fetch_history(yf_tickers: list, period: str = "1y") -> pd.DataFrame:
         )
         return raw
     except Exception as e:
-        print(f"  ⚠️ yfinance error: {e}")
+        print(f"  yfinance error: {e}")
         return pd.DataFrame()
 
 
 def get_ticker_series(raw, yf_tk):
-    """Extrae Close + Volume series para un ticker del MultiIndex raw."""
     try:
         if isinstance(raw.columns, pd.MultiIndex):
             if yf_tk in raw.columns.get_level_values(0):
@@ -98,56 +101,55 @@ def get_ticker_series(raw, yf_tk):
         return None, None
 
 
-# ── EVALUADORES DE REGLAS ────────────────────────────────────
+# ── METRICS ─────────────────────────────────────────────────
 def calc_metrics(close: pd.Series, volume: pd.Series) -> dict:
-    """Calcula todas las métricas necesarias para evaluar reglas."""
     if close is None or len(close.dropna()) < 20:
         return None
     close = close.dropna()
-    metrics = {
+    m = {
         "precio_actual": float(close.iloc[-1]),
-        "precio_5d_atras":   float(close.iloc[-min(6, len(close))]) if len(close) >= 6 else None,
-        "precio_20d_atras":  float(close.iloc[-min(21, len(close))]) if len(close) >= 21 else None,
-        "precio_60d_atras":  float(close.iloc[-min(61, len(close))]) if len(close) >= 61 else None,
-        "ath_252d":          float(close.tail(252).max()) if len(close) > 0 else None,
-        "high_20d":          float(close.tail(20).max()),
+        "precio_5d_atras":  float(close.iloc[-min(6, len(close))]) if len(close) >= 6 else None,
+        "precio_20d_atras": float(close.iloc[-min(21, len(close))]) if len(close) >= 21 else None,
+        "precio_60d_atras": float(close.iloc[-min(61, len(close))]) if len(close) >= 61 else None,
+        "ath_252d":         float(close.tail(252).max()) if len(close) > 0 else None,
     }
-    # Cambios porcentuales
-    p_now = metrics["precio_actual"]
-    metrics["pct_5d"]   = ((p_now / metrics["precio_5d_atras"]  - 1) * 100) if metrics["precio_5d_atras"]  else None
-    metrics["pct_20d"]  = ((p_now / metrics["precio_20d_atras"] - 1) * 100) if metrics["precio_20d_atras"] else None
-    metrics["pct_60d"]  = ((p_now / metrics["precio_60d_atras"] - 1) * 100) if metrics["precio_60d_atras"] else None
-    metrics["pct_from_ath"] = ((p_now / metrics["ath_252d"] - 1) * 100) if metrics["ath_252d"] else None
+    p = m["precio_actual"]
+    m["pct_5d"]  = ((p / m["precio_5d_atras"]  - 1) * 100) if m["precio_5d_atras"]  else None
+    m["pct_20d"] = ((p / m["precio_20d_atras"] - 1) * 100) if m["precio_20d_atras"] else None
+    m["pct_60d"] = ((p / m["precio_60d_atras"] - 1) * 100) if m["precio_60d_atras"] else None
+    m["pct_from_ath"] = ((p / m["ath_252d"] - 1) * 100) if m["ath_252d"] else None
 
-    # SMA200
     if len(close) >= 200:
         sma200 = float(close.tail(200).mean())
-        metrics["sma200"] = sma200
-        metrics["above_sma200"] = p_now > sma200
+        m["sma200"] = sma200
+        m["above_sma200"] = p > sma200
     else:
-        metrics["sma200"] = None
-        metrics["above_sma200"] = None  # unknown
+        m["sma200"] = None
+        m["above_sma200"] = None
 
-    # Volume ratio (últimos 5d vs promedio 60d)
     if volume is not None and len(volume.dropna()) >= 60:
         vol_recent = float(volume.tail(5).mean())
         vol_avg    = float(volume.tail(60).mean())
-        metrics["volume_ratio"] = (vol_recent / vol_avg) if vol_avg > 0 else None
+        m["volume_ratio"] = (vol_recent / vol_avg) if vol_avg > 0 else None
     else:
-        metrics["volume_ratio"] = None
+        m["volume_ratio"] = None
 
-    return metrics
+    return m
 
 
-def evaluate_dip_rules(ticker: str, mercado: str, m: dict, rules: dict) -> list:
-    """Aplica reglas de DIP y MOMENTUM. Retorna list[dict] de alertas."""
+# ── CONNORS DIP RULES ──────────────────────────────────────
+def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
+                           tesis: str = "", bucket: str = "") -> list:
+    """Aplica reglas Connors sobre un ticker. Retorna list[dict] de alertas."""
     alerts = []
     dips = rules.get("dips", {})
     momentum = rules.get("momentum", {})
+    ctx = f" [{bucket}]" if bucket else ""
+    tesis_note = f" Tesis: {tesis}" if tesis else ""
 
-    # 1. DIP CHICO
+    # 1. DIP CHICO (-10% en 5d)
     rule = dips.get("small_dip", {})
-    if m["pct_5d"] is not None and m["pct_5d"] <= rule["threshold_pct"]:
+    if m["pct_5d"] is not None and m["pct_5d"] <= rule.get("threshold_pct", -10):
         ok = True
         if rule.get("require_above_sma200") and m["above_sma200"] is False:
             ok = False
@@ -155,104 +157,221 @@ def evaluate_dip_rules(ticker: str, mercado: str, m: dict, rules: dict) -> list:
             if m["volume_ratio"] < rule["require_volume_ratio"]:
                 ok = False
         if ok:
-            sma_note = "Sobre SMA200 ✓ " if m.get('above_sma200') else ""
-            vol_note = f"Vol {m['volume_ratio']:.1f}x" if m.get('volume_ratio') else ""
             alerts.append({
                 "categoria":  "oportunidad_dip",
-                "severidad":  rule["severidad"],
+                "severidad":  "media",
                 "activo":     ticker,
-                "titulo":     f"{rule['label']} en {ticker}",
-                "mensaje":    f"{ticker} cayó {m['pct_5d']:.1f}% en 5 días. "
-                              f"Precio: USD {m['precio_actual']:.2f}. {sma_note}{vol_note}",
+                "titulo":     f"DIP CHICO en {ticker}{ctx}",
+                "mensaje":    f"{ticker} cayo {m['pct_5d']:.1f}% en 5d. "
+                              f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
                 "metricas":   {"pct_5d": round(m["pct_5d"], 2), "precio": m["precio_actual"],
-                               "volume_ratio": m.get("volume_ratio"), "above_sma200": m.get("above_sma200")},
-                "sugerencia": f"Considerar compra USD {rule['accion_min_usd']}-{rule['accion_max_usd']}. "
-                              f"Verificar primero que no haya catalyst negativo en noticias.",
+                               "bucket": bucket, "rule": "small_dip"},
+                "sugerencia": f"Considerar compra USD {rule.get('accion_min_usd', 150)}-{rule.get('accion_max_usd', 250)}.",
             })
 
-    # 2. DIP MEDIO
+    # 2. DIP MEDIO (-15% en 20d)
     rule = dips.get("medium_dip", {})
-    if m["pct_20d"] is not None and m["pct_20d"] <= rule["threshold_pct"]:
+    if m["pct_20d"] is not None and m["pct_20d"] <= rule.get("threshold_pct", -15):
         ok = True
         if rule.get("require_above_sma200") and m["above_sma200"] is False:
             ok = False
         if ok:
             alerts.append({
                 "categoria":  "oportunidad_dip",
-                "severidad":  rule["severidad"],
+                "severidad":  "alta",
                 "activo":     ticker,
-                "titulo":     f"{rule['label']} en {ticker}",
-                "mensaje":    f"{ticker} cayó {m['pct_20d']:.1f}% en 20 días. "
-                              f"Precio actual: USD {m['precio_actual']:.2f}.",
+                "titulo":     f"DIP MEDIO en {ticker}{ctx}",
+                "mensaje":    f"{ticker} cayo {m['pct_20d']:.1f}% en 20d. "
+                              f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
                 "metricas":   {"pct_20d": round(m["pct_20d"], 2), "precio": m["precio_actual"],
-                               "above_sma200": m.get("above_sma200")},
-                "sugerencia": f"Compra puntual USD {rule['accion_min_usd']}-{rule['accion_max_usd']} "
-                              f"si la tesis sigue intacta. Revisar earnings recientes.",
+                               "bucket": bucket, "rule": "medium_dip"},
+                "sugerencia": f"Compra puntual USD {rule.get('accion_min_usd', 300)}-{rule.get('accion_max_usd', 500)} si tesis intacta.",
             })
 
-    # 3. DIP GRANDE
+    # 3. DIP GRANDE (-25% en 60d)
     rule = dips.get("large_dip", {})
-    if m["pct_60d"] is not None and m["pct_60d"] <= rule["threshold_pct"]:
+    if m["pct_60d"] is not None and m["pct_60d"] <= rule.get("threshold_pct", -25):
         alerts.append({
             "categoria":  "oportunidad_dip",
-            "severidad":  rule["severidad"],
+            "severidad":  "alta",
             "activo":     ticker,
-            "titulo":     f"{rule['label']} en {ticker}",
-            "mensaje":    f"{ticker} cayó {m['pct_60d']:.1f}% en 60 días. "
-                          f"Precio: USD {m['precio_actual']:.2f}.",
-            "metricas":   {"pct_60d": round(m["pct_60d"], 2), "precio": m["precio_actual"]},
-            "sugerencia": f"Oportunidad agresiva USD {rule['accion_min_usd']}-{rule['accion_max_usd']}. "
-                          f"Si fundamentales OK, promediar fuerte.",
+            "titulo":     f"DIP GRANDE en {ticker}{ctx}",
+            "mensaje":    f"{ticker} cayo {m['pct_60d']:.1f}% en 60d. "
+                          f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
+            "metricas":   {"pct_60d": round(m["pct_60d"], 2), "precio": m["precio_actual"],
+                           "bucket": bucket, "rule": "large_dip"},
+            "sugerencia": f"Oportunidad agresiva USD {rule.get('accion_min_usd', 600)}-{rule.get('accion_max_usd', 1000)}.",
         })
 
-    # 4. BEAR CRASH
+    # 4. BEAR CRASH (-40% desde ATH)
     rule = dips.get("bear_crash", {})
-    if m["pct_from_ath"] is not None and m["pct_from_ath"] <= rule["threshold_pct"]:
+    if m["pct_from_ath"] is not None and m["pct_from_ath"] <= rule.get("threshold_pct", -40):
         alerts.append({
             "categoria":  "oportunidad_dip",
-            "severidad":  rule["severidad"],
+            "severidad":  "critica",
             "activo":     ticker,
-            "titulo":     f"{rule['label']} en {ticker}",
-            "mensaje":    f"{ticker} bajó {m['pct_from_ath']:.1f}% desde all-time-high. "
-                          f"Precio: USD {m['precio_actual']:.2f} vs ATH USD {m['ath_252d']:.2f}.",
-            "metricas":   {"pct_from_ath": round(m["pct_from_ath"], 2),
-                           "precio": m["precio_actual"], "ath": m["ath_252d"]},
-            "sugerencia": f"⚠️ MANUAL REVIEW: verificar que tesis siga intacta. "
-                          f"Si OK, compra event-driven USD {rule['accion_min_usd']}-{rule['accion_max_usd']}.",
+            "titulo":     f"BEAR CRASH en {ticker}{ctx}",
+            "mensaje":    f"{ticker} bajo {m['pct_from_ath']:.1f}% desde ATH. "
+                          f"USD {m['precio_actual']:.2f} vs ATH USD {m['ath_252d']:.2f}.{tesis_note}",
+            "metricas":   {"pct_from_ath": round(m["pct_from_ath"], 2), "precio": m["precio_actual"],
+                           "ath": m["ath_252d"], "bucket": bucket, "rule": "bear_crash"},
+            "sugerencia": f"MANUAL REVIEW. Si tesis viva, compra USD {rule.get('accion_min_usd', 1500)}-{rule.get('accion_max_usd', 2500)}.",
         })
 
-    # 5. MOMENTUM EXTREMO (subió mucho)
+    # 5. MOMENTUM EXTREMO (+30% en 20d)
     rule = momentum.get("extreme_rally", {})
-    if m["pct_20d"] is not None and m["pct_20d"] >= rule["threshold_pct"]:
+    if m["pct_20d"] is not None and m["pct_20d"] >= rule.get("threshold_pct", 30):
         alerts.append({
             "categoria":  "momentum_warning",
-            "severidad":  rule["severidad"],
+            "severidad":  "media",
             "activo":     ticker,
-            "titulo":     f"{rule['label']} en {ticker}",
-            "mensaje":    f"{ticker} subió +{m['pct_20d']:.1f}% en 20 días. "
+            "titulo":     f"MOMENTUM EXTREMO en {ticker}{ctx}",
+            "mensaje":    f"{ticker} subio +{m['pct_20d']:.1f}% en 20d. "
                           f"Precio: USD {m['precio_actual']:.2f}.",
-            "metricas":   {"pct_20d": round(m["pct_20d"], 2), "precio": m["precio_actual"]},
-            "sugerencia": rule["descripcion"],
-        })
-
-    # 6. NEAR ATH (informativo)
-    rule = momentum.get("near_ath", {})
-    if m["pct_from_ath"] is not None and abs(m["pct_from_ath"]) <= rule["distance_from_ath_pct"]:
-        alerts.append({
-            "categoria":  "momentum_warning",
-            "severidad":  rule["severidad"],
-            "activo":     ticker,
-            "titulo":     f"{rule['label']} {ticker} ({m['pct_from_ath']:.1f}% del ATH)",
-            "mensaje":    f"{ticker} está a {abs(m['pct_from_ath']):.1f}% del all-time-high. "
-                          f"Precio: USD {m['precio_actual']:.2f} · ATH: USD {m['ath_252d']:.2f}.",
-            "metricas":   {"pct_from_ath": round(m["pct_from_ath"], 2), "precio": m["precio_actual"]},
-            "sugerencia": rule["descripcion"],
+            "metricas":   {"pct_20d": round(m["pct_20d"], 2), "precio": m["precio_actual"],
+                           "bucket": bucket, "rule": "extreme_rally"},
+            "sugerencia": "NO comprar. Evaluar trim parcial 25-30%.",
         })
 
     return alerts
 
 
-# ── SAVE (con auto-dedupe) ───────────────────────────────────
+# ── WATCHLIST ENTRY TARGET CHECK ────────────────────────────
+def check_entry_targets(watchlist_cfg: dict, metrics_map: dict) -> list:
+    """Revisa si algún ticker Tier 1 está en zona de entry target."""
+    alerts = []
+    tier1 = watchlist_cfg.get("watchlist", {}).get("tier1", [])
+
+    for item in tier1:
+        tk = item.get("ticker")
+        entry = item.get("entry_usd")
+        if not tk or not entry or entry is None:
+            continue
+        m = metrics_map.get(tk)
+        if not m:
+            continue
+
+        precio = m["precio_actual"]
+        entry_low, entry_high = entry[0], entry[1]
+
+        if precio <= entry_high:
+            size = item.get("size_usd", [300, 500])
+            in_zone = precio <= entry_high and precio >= entry_low * 0.9  # 10% below low still interesting
+            if in_zone:
+                alerts.append({
+                    "categoria":  "watchlist_entry",
+                    "severidad":  "alta",
+                    "activo":     tk,
+                    "titulo":     f"ENTRY TARGET: {tk} a USD {precio:.2f}",
+                    "mensaje":    f"{item.get('nombre', tk)} entro en zona de compra "
+                                  f"(target USD {entry_low}-{entry_high}, actual USD {precio:.2f}). "
+                                  f"Tesis: {item.get('tesis', '')}",
+                    "metricas":   {"precio": precio, "entry_low": entry_low, "entry_high": entry_high,
+                                   "bucket": item.get("bucket", "")},
+                    "sugerencia": f"Comprar USD {size[0]}-{size[1]}. Ticker Tier 1 alta conviccion.",
+                })
+            elif precio < entry_low * 0.9:
+                # Below target — even better but might signal trouble
+                alerts.append({
+                    "categoria":  "watchlist_entry",
+                    "severidad":  "alta",
+                    "activo":     tk,
+                    "titulo":     f"BELOW TARGET: {tk} a USD {precio:.2f}",
+                    "mensaje":    f"{item.get('nombre', tk)} esta POR DEBAJO del entry target "
+                                  f"(target USD {entry_low}-{entry_high}, actual USD {precio:.2f}). "
+                                  f"Verificar que no haya catalyst negativo. "
+                                  f"Tesis: {item.get('tesis', '')}",
+                    "metricas":   {"precio": precio, "entry_low": entry_low, "entry_high": entry_high,
+                                   "bucket": item.get("bucket", "")},
+                    "sugerencia": f"Revisar noticias. Si tesis OK, oportunidad mayor: USD {size[0]}-{size[1]}.",
+                })
+
+    return alerts
+
+
+# ── TIER 2 TRIGGER CHECKS ──────────────────────────────────
+def check_tier2_triggers(watchlist_cfg: dict, metrics_map: dict) -> list:
+    """Revisa triggers de Tier 2 (caida >10%, bajo USD X, etc.)."""
+    alerts = []
+    tier2 = watchlist_cfg.get("watchlist", {}).get("tier2", [])
+
+    for item in tier2:
+        tk = item.get("ticker")
+        trigger = item.get("trigger", "")
+        m = metrics_map.get(tk)
+        if not tk or not m:
+            continue
+
+        triggered = False
+        msg_extra = ""
+
+        if "caida >10%" in trigger.lower():
+            # Check 20d drawdown
+            if m["pct_20d"] is not None and m["pct_20d"] <= -10:
+                triggered = True
+                msg_extra = f"Cayo {m['pct_20d']:.1f}% en 20d."
+        elif "bajo usd" in trigger.lower():
+            import re
+            match = re.search(r"bajo usd\s*([\d.]+)", trigger.lower())
+            if match:
+                target = float(match.group(1))
+                if m["precio_actual"] <= target:
+                    triggered = True
+                    msg_extra = f"Precio USD {m['precio_actual']:.2f} (bajo target USD {target})."
+
+        if triggered:
+            alerts.append({
+                "categoria":  "watchlist_tier2",
+                "severidad":  "media",
+                "activo":     tk,
+                "titulo":     f"TIER 2 TRIGGER: {tk}",
+                "mensaje":    f"{item.get('nombre', tk)}: {msg_extra} "
+                              f"Bucket: {item.get('bucket', '')}. "
+                              f"Tesis: {item.get('tesis', '')}",
+                "metricas":   {"precio": m["precio_actual"], "trigger": trigger,
+                               "bucket": item.get("bucket", "")},
+                "sugerencia": f"Oportunidad oportunistica. Evaluar entry.",
+            })
+
+    return alerts
+
+
+# ── PENDING ACTIONS REMINDERS ───────────────────────────────
+def check_pending_actions(watchlist_cfg: dict, metrics_map: dict) -> list:
+    """Genera recordatorios para acciones pendientes de alta urgencia."""
+    alerts = []
+    pendientes = watchlist_cfg.get("acciones_pendientes", [])
+
+    for item in pendientes:
+        tk = item.get("ticker")
+        urgencia = item.get("urgencia", "baja")
+        if urgencia not in ("alta", "media"):
+            continue  # Solo recordar urgentes
+
+        m = metrics_map.get(tk, {})
+        precio = m.get("precio_actual", 0) if m else 0
+        precio_str = f" Precio actual: USD {precio:.2f}." if precio else ""
+
+        sev = "alta" if urgencia == "alta" else "media"
+        accion = item.get("accion", "?")
+        monto = item.get("monto_usd")
+        monto_str = f" USD {monto}" if monto else ""
+
+        alerts.append({
+            "categoria":  "accion_pendiente",
+            "severidad":  sev,
+            "activo":     tk,
+            "titulo":     f"PENDIENTE: {accion} {tk}{monto_str}",
+            "mensaje":    f"{item.get('nota', '')}.{precio_str}",
+            "metricas":   {"accion": accion, "monto_usd": monto, "urgencia": urgencia,
+                           "precio": precio},
+            "sugerencia": f"Ejecutar {accion} de {tk}." if accion == "COMPRAR" else f"Revisar {tk}.",
+        })
+
+    return alerts
+
+
+# ── SAVE ────────────────────────────────────────────────────
 def save_alerts(alerts: list) -> dict:
     if not alerts:
         return {"insertadas": 0, "duplicadas": 0, "errores": 0}
@@ -294,115 +413,171 @@ def save_alerts(alerts: list) -> dict:
             else:
                 err += 1
                 if err <= 3:
-                    print(f"  ❌ {a['activo']}: {str(e)[:120]}")
+                    print(f"  {a['activo']}: {str(e)[:120]}")
     return {"insertadas": ins, "duplicadas": dup, "errores": err}
 
 
-# ── MAIN ─────────────────────────────────────────────────────
+# ── MAIN ────────────────────────────────────────────────────
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="No escribe a Supabase")
-    parser.add_argument("--ticker", default=None, help="Solo un ticker específico")
+    parser.add_argument("--ticker", default=None, help="Solo un ticker especifico")
     args = parser.parse_args()
 
     print("=" * 60)
-    print("🎯 OPPORTUNITY DETECTOR — Aplicando reglas pre-comprometidas")
+    print("OPPORTUNITY DETECTOR v2 — Watchlist + Cartera + Connors")
     print("=" * 60)
 
     rules = load_rules()
+    wl_cfg = load_watchlist_config()
     df_cart = load_cartera()
-    if df_cart.empty:
-        print("⚠️ Cartera vacía.")
-        return
 
-    gf = rules["global_filters"]
-    excluded = set(gf.get("exclude_tickers", []))
+    # Build exclusion list from watchlist.yaml
+    excluded = set(wl_cfg.get("etfs_core_no_alert", []))
+    gf = rules.get("global_filters", {})
 
-    # Filtrar:
-    df_eval = df_cart[
-        (~df_cart["ticker"].isin(excluded)) &
-        (df_cart["valor_clp"].fillna(0) >= gf["min_position_or_watchlist_usd"] * USD_CLP)
-    ].copy()
+    # ── Build ticker universe ────────────────────────────────
+    # 1. Cartera positions (above minimum value)
+    tickers_to_eval = {}  # ticker -> {mercado, tesis, bucket}
+    if not df_cart.empty:
+        min_val = gf.get("min_position_or_watchlist_usd", 100) * USD_CLP
+        for _, row in df_cart.iterrows():
+            tk = row.get("ticker")
+            if not tk or tk == "PORTFOLIO_CL" or tk in excluded:
+                continue
+            if row.get("valor_clp", 0) < min_val:
+                continue
+            # Find tesis from recurrente plan
+            tesis = ""
+            bucket = ""
+            for r in wl_cfg.get("recurrente", []):
+                if r["ticker"] == tk:
+                    tesis = r.get("tesis", "")
+                    bucket = r.get("bucket", "")
+                    break
+            tickers_to_eval[tk] = {
+                "mercado": row.get("mercado", "internacional"),
+                "tesis": tesis,
+                "bucket": bucket,
+            }
 
-    # Agregar watchlist (sin posición pero a monitorear)
-    watchlist = rules.get("watchlist", [])
-    cart_tickers = set(df_eval["ticker"].dropna().tolist())
-    extra = [w for w in watchlist if w not in cart_tickers]
-    for w in extra:
-        df_eval = pd.concat([df_eval, pd.DataFrame([{
-            "ticker": w, "mercado": "internacional", "moneda": "USD",
-            "cantidad": 0, "valor_clp": 0,
-        }])], ignore_index=True)
+    # 2. Watchlist tickers (all tiers)
+    for tier_key in ["tier1", "tier2", "tier3"]:
+        for item in wl_cfg.get("watchlist", {}).get(tier_key, []):
+            tk = item.get("ticker")
+            if tk and tk not in excluded and tk not in tickers_to_eval:
+                tickers_to_eval[tk] = {
+                    "mercado": "internacional",
+                    "tesis": item.get("tesis", ""),
+                    "bucket": item.get("bucket", ""),
+                }
+
+    # 3. Acciones pendientes
+    for item in wl_cfg.get("acciones_pendientes", []):
+        tk = item.get("ticker")
+        if tk and tk not in excluded and tk not in tickers_to_eval:
+            tickers_to_eval[tk] = {
+                "mercado": "internacional",
+                "tesis": item.get("nota", ""),
+                "bucket": "",
+            }
 
     if args.ticker:
-        df_eval = df_eval[df_eval["ticker"] == args.ticker]
+        if args.ticker in tickers_to_eval:
+            tickers_to_eval = {args.ticker: tickers_to_eval[args.ticker]}
+        else:
+            tickers_to_eval = {args.ticker: {"mercado": "internacional", "tesis": "", "bucket": ""}}
 
-    print(f"\n📊 {len(df_eval)} tickers a evaluar "
-          f"({len(df_eval) - len(extra)} cartera + {len(extra)} watchlist) "
-          f"· {len(excluded)} excluidos (ETFs core)")
+    cart_count = len([t for t in tickers_to_eval if t in set(df_cart["ticker"].tolist())] if not df_cart.empty else [])
+    wl_count = len(tickers_to_eval) - cart_count
 
-    # Construir map ticker → yf_ticker
+    print(f"\n{len(tickers_to_eval)} tickers a evaluar "
+          f"({cart_count} cartera + {wl_count} watchlist) "
+          f"| {len(excluded)} excluidos (ETFs core)")
+
+    # ── Download prices ──────────────────────────────────────
     yf_map = {}
-    for _, row in df_eval.iterrows():
-        tk = row["ticker"]
-        if not tk or tk == "PORTFOLIO_CL":
-            continue
-        yf_map[tk] = yf_ticker_for(tk, row.get("mercado", "internacional"))
-
-    if not yf_map:
-        print("Sin tickers válidos para evaluar.")
-        return
+    for tk, info in tickers_to_eval.items():
+        yf_map[tk] = yf_ticker_for(tk, info["mercado"])
 
     yf_unique = list(set(yf_map.values()))
-    print(f"📡 Descargando histórico 1y de {len(yf_unique)} tickers…")
+    print(f"Descargando historico 1y de {len(yf_unique)} tickers...")
     raw = fetch_history(yf_unique, period="1y")
 
     if raw.empty:
-        print("❌ yfinance retornó vacío.")
+        print("yfinance retorno vacio.")
         return
 
-    # Evaluar cada ticker
-    all_alerts = []
+    # ── Calculate metrics for all tickers ────────────────────
+    metrics_map = {}  # ticker -> metrics dict
     skipped = 0
-    for _, row in df_eval.iterrows():
-        tk = row["ticker"]
-        if tk not in yf_map:
+    for tk, info in tickers_to_eval.items():
+        yf_tk = yf_map.get(tk)
+        if not yf_tk:
+            skipped += 1
             continue
-        yf_tk = yf_map[tk]
         close, volume = get_ticker_series(raw, yf_tk)
         if close is None:
             skipped += 1
             continue
-        metrics = calc_metrics(close, volume)
-        if not metrics:
+        m = calc_metrics(close, volume)
+        if m:
+            metrics_map[tk] = m
+        else:
             skipped += 1
-            continue
-        alerts = evaluate_dip_rules(tk, row.get("mercado", "internacional"), metrics, rules)
-        all_alerts.extend(alerts)
 
-    # Limit
-    max_alerts = gf.get("max_alerts_per_run", 50)
+    print(f"Metricas calculadas: {len(metrics_map)} tickers ({skipped} sin data)\n")
+
+    # ── Run all checks ───────────────────────────────────────
+    all_alerts = []
+
+    # 1. Connors DIP rules on all tickers
+    print("Connors DIP rules...")
+    for tk, m in metrics_map.items():
+        info = tickers_to_eval.get(tk, {})
+        alerts = evaluate_connors_rules(tk, m, rules, info.get("tesis", ""), info.get("bucket", ""))
+        all_alerts.extend(alerts)
+    print(f"  {len(all_alerts)} alertas DIP/momentum")
+
+    # 2. Watchlist entry targets (Tier 1)
+    print("Entry targets (Tier 1)...")
+    entry_alerts = check_entry_targets(wl_cfg, metrics_map)
+    all_alerts.extend(entry_alerts)
+    print(f"  {len(entry_alerts)} entry targets")
+
+    # 3. Tier 2 triggers
+    print("Tier 2 triggers...")
+    t2_alerts = check_tier2_triggers(wl_cfg, metrics_map)
+    all_alerts.extend(t2_alerts)
+    print(f"  {len(t2_alerts)} tier 2 triggers")
+
+    # 4. Pending actions
+    print("Acciones pendientes...")
+    pending_alerts = check_pending_actions(wl_cfg, metrics_map)
+    all_alerts.extend(pending_alerts)
+    print(f"  {len(pending_alerts)} recordatorios")
+
+    # ── Sort by priority ─────────────────────────────────────
     sev_order = {"critica": 0, "alta": 1, "media": 2, "baja": 3, "info": 4}
     all_alerts.sort(key=lambda a: sev_order.get(a.get("severidad", "info"), 99))
-    if len(all_alerts) > max_alerts:
-        print(f"⚠️ {len(all_alerts)} alertas detectadas, truncando a max_alerts_per_run={max_alerts}")
-        all_alerts = all_alerts[:max_alerts]
 
-    print(f"\n📋 Total alertas: {len(all_alerts)} ({skipped} tickers sin data suficiente)")
+    print(f"\nTotal alertas: {len(all_alerts)}")
     if all_alerts:
         from collections import Counter
-        by_label = Counter(a["titulo"].split(" en ")[0] for a in all_alerts)
-        for label, n in by_label.most_common():
-            print(f"   {label}: {n}")
+        by_cat = Counter(a["categoria"] for a in all_alerts)
+        for cat, n in by_cat.most_common():
+            print(f"   {cat}: {n}")
 
     if args.dry_run:
-        print("\n⚠️ DRY RUN — no se guardó nada")
+        print("\nDRY RUN — no se guardo nada")
+        for a in all_alerts[:10]:
+            print(f"  [{a['severidad'].upper():8s}] {a['titulo']}")
         return
 
     result = save_alerts(all_alerts)
-    print(f"\n✅ Insertadas: {result['insertadas']}")
-    print(f"♻️ Actualizadas: {result['duplicadas']}")
-    print(f"❌ Errores: {result['errores']}")
+    print(f"\nInsertadas: {result['insertadas']}")
+    print(f"Actualizadas: {result['duplicadas']}")
+    print(f"Errores: {result['errores']}")
     print("=" * 60)
 
 

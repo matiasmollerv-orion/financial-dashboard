@@ -37,12 +37,19 @@ TIPO_MAP = {
     "TSLA": "Acción", "TSM":  "Acción",  "UNH":  "Acción",
     "VCX":  "Acción", "VRT":  "Acción",  "WMT":  "Acción",
     "ZETA": "Acción",
+    # Nuevos mayo 2026
+    "AMBA": "Acción", "ARES": "Acción", "CRWV": "Acción",
+    "LSCC": "Acción", "MP": "Acción",   "NBIS": "Acción",
+    "OKLO": "Acción",
+    # ETFs nuevos
+    "EWY": "ETF", "URNM": "ETF",
     # Acciones chilenas
     "BCI": "Acción", "LTM": "Acción", "CENCOSUD": "Acción",
     "PARAUCO": "Acción", "COPEC": "Acción", "CMPC": "Acción",
     "BSANTANDER": "Acción", "CHILE": "Acción", "COLBUN": "Acción",
     "IAM": "Acción", "ENELAM": "Acción", "QUINENCO": "Acción",
     "CAP": "Acción", "SMU": "Acción",
+    "ITAUCL": "Acción", "FALABELLA": "Acción", "CFMITNIPSA": "Fondo Mutuo",
     # Crypto
     "BTC": "Crypto", "ETH": "Crypto",
     # Santander (acciones inputadas)
@@ -69,6 +76,10 @@ PAIS_MAP = {
     "SOFI": "EE.UU.", "TSLA": "EE.UU.", "UNH": "EE.UU.",
     "VCX": "EE.UU.",  "VRT": "EE.UU.",  "WMT": "EE.UU.",
     "ZETA": "EE.UU.", "CCJ": "EE.UU.",
+    # Nuevos mayo 2026
+    "AMBA": "EE.UU.", "ARES": "EE.UU.", "CRWV": "EE.UU.",
+    "LSCC": "EE.UU.", "MP": "EE.UU.",   "NBIS": "EE.UU.",
+    "OKLO": "EE.UU.",
     # USA (ETFs domiciliados en USA)
     "QQQ": "EE.UU.", "VOO": "EE.UU.", "VTI": "EE.UU.",
     "RSP": "EE.UU.", "ESGV": "EE.UU.", "VTV": "EE.UU.",
@@ -96,6 +107,9 @@ PAIS_MAP = {
     "EWJ": "Japón", "EZU": "Europa",
     "ILF": "Latinoamérica", "INDA": "India",
     "VNM": "Vietnam",
+    "EWY": "Corea del Sur", "URNM": "EE.UU.",
+    # Chile
+    "ITAUCL": "Chile", "FALABELLA": "Chile", "CFMITNIPSA": "Chile",
     # Crypto
     "BTC": "Criptomonedas", "ETH": "Criptomonedas",
     # Santander (acciones inputadas)
@@ -155,8 +169,16 @@ SECTOR_MAP = {
     "VTIP": "ETF TIPS", "SCHP": "ETF TIPS", "TMF": "ETF Bonos 20Y 3x",
     "GLDM": "ETF Oro", "GLD": "ETF Oro",
     "BITO": "ETF Crypto",
+    "EWY": "ETF Corea", "URNM": "ETF Uranio",
     # Crypto
     "BTC": "Crypto", "ETH": "Crypto",
+    # Nuevos mayo 2026
+    "AMBA": "Tecnología", "ARES": "Finanzas", "CRWV": "IA/GPU",
+    "LSCC": "Tecnología", "MP": "Minería", "NBIS": "IA/GPU",
+    "OKLO": "Energía/Nuclear", "TSLA": "Automotriz/EV",
+    # Chile nuevos
+    "ITAUCL": "Banca Chile", "FALABELLA": "Retail Chile",
+    "CFMITNIPSA": "Fondo Mutuo Chile",
     # Santander STG
     "ENELCHILE_STG": "Energía", "ENJOY_STG": "Entretenimiento",
     "LTM_STG": "Aviación",

@@ -51,6 +51,13 @@ jobs:
             python load_racional.py --days 14 || echo "racional_compras" >> /tmp/failures.txt
           fi
 
+      - name: Run Racional PDF transactions update
+        id: racional_pdf
+        run: |
+          if [ -f load_racional_pdf.py ]; then
+            python load_racional_pdf.py --days 14 || echo "racional_pdf" >> /tmp/failures.txt
+          fi
+
       - name: Run Buda crypto update
         id: buda
         run: |

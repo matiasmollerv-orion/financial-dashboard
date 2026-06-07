@@ -176,7 +176,10 @@ def update_prices(df_cart: pd.DataFrame) -> pd.DataFrame:
         if not tk or tk == "PORTFOLIO_CL":
             continue
         if row.get("mercado") == "nacional":
-            yf_map[tk] = f"{tk}.SN"
+            # Santander stocks use _STG suffix; strip it for yfinance
+            base_tk = tk.replace("_STG", "") if tk.endswith("_STG") else tk
+            # ENELCHILE is the BCS ticker, maps to ENELCHILE.SN in yfinance
+            yf_map[tk] = f"{base_tk}.SN"
         elif row.get("mercado") == "crypto":
             yf_map[tk] = f"{tk}-USD"
         else:

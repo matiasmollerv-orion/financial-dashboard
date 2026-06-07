@@ -339,7 +339,7 @@ def render():
         legend=dict(orientation="h", y=-0.25, font=dict(size=10)),
     )
 
-    # Capturar click en barra (Streamlit ≥ 1.33)
+    # Capturar click en barra para drill-down
     try:
         sel = st.plotly_chart(fig3, use_container_width=True,
                               on_select="rerun", key="bar_periodos")
@@ -350,76 +350,76 @@ def render():
             if pt.get("customdata"):
                 sub_click = pt["customdata"][0]
             if per_click:
-                st.session_state["mes_detalle"] = per_click
+                st.session_state["drill_periodo"] = per_click
             if sub_click:
-                st.session_state["sub_detalle"] = sub_click
+                st.session_state["drill_sub"] = sub_click
     except Exception:
         st.plotly_chart(fig3, use_container_width=True)
 
-    # ── DETALLE DEL PERÍODO SELECCIONADO ──────────────────
-    mes_detalle = st.session_state.get("mes_detalle")
-    sub_detalle = st.session_state.get("sub_detalle")
+    # ── DRILL-DOWN: tabla de detalle al hacer click ──────
+    # También ofrece selectores como fallback por si el click no funciona
+    st.divider()
+    section_title("🔎 Drill-down por período y subcategoría")
 
-    if mes_detalle and mes_detalle in df_f["periodo"].unique():
-        df_mes_det = df_f[df_f["periodo"] == mes_detalle].copy()
-        sub_label = ""
-        if sub_detalle and sub_detalle != "— Todas —" and sub_detalle in df_f["subcategoria"].unique():
-            df_mes_det = df_mes_det[df_mes_det["subcategoria"] == sub_detalle]
-            sub_label = f" · {sub_detalle}"
+    periodos_disponibles = sorted(df_f["periodo"].unique().tolist())
+    subs_disponibles = sorted(df_f["subcategoria"].unique().tolist())
 
-        # Botón para limpiar selección
-        col_clear, _ = st.columns([1, 5])
-        with col_clear:
-            if st.button("✖ Limpiar selección", key="clear_drill", use_container_width=True):
-                st.session_state.pop("mes_detalle", None)
-                st.session_state.pop("sub_detalle", None)
-                st.rerun()
+    # Usar valores del click si existen, sino defaults
+    default_per_idx = 0
+    drill_periodo_click = st.session_state.get("drill_periodo")
+    if drill_periodo_click and drill_periodo_click in periodos_disponibles:
+        default_per_idx = periodos_disponibles.index(drill_periodo_click)
 
-        if not df_mes_det.empty:
-            st.divider()
-            section_title(f"Detalle {mes_detalle}{sub_label} — {fmt_clp(df_mes_det['monto'].sum())} en {len(df_mes_det)} transacciones")
+    default_sub_idx = 0
+    drill_sub_click = st.session_state.get("drill_sub")
+    subs_con_todas = ["— Todas —"] + subs_disponibles
+    if drill_sub_click and drill_sub_click in subs_disponibles:
+        default_sub_idx = subs_con_todas.index(drill_sub_click)
 
-            # ── Tabla con flags de feedback ───────────────
-            st.caption("🚩 Marca una transacción para recategorizar")
+    col_d1, col_d2, col_d3 = st.columns([3, 3, 1])
+    with col_d1:
+        drill_per = st.selectbox(
+            f"📅 {period_label}",
+            periodos_disponibles,
+            index=default_per_idx,
+            key="drill_periodo_select",
+        )
+    with col_d2:
+        drill_sub = st.selectbox(
+            "📂 Subcategoría",
+            subs_con_todas,
+            index=default_sub_idx,
+            key="drill_sub_select",
+        )
+    with col_d3:
+        st.write("")  # spacer
+        if st.button("🔄 Reset", key="drill_reset", use_container_width=True):
+            st.session_state.pop("drill_periodo", None)
+            st.session_state.pop("drill_sub", None)
+            st.rerun()
 
-            if "feedback" not in st.session_state:
-                st.session_state["feedback"] = {}
+    # Filtrar datos para el drill-down
+    df_drill = df_f[df_f["periodo"] == drill_per].copy()
+    sub_label = ""
+    if drill_sub != "— Todas —":
+        df_drill = df_drill[df_drill["subcategoria"] == drill_sub]
+        sub_label = f" · {drill_sub}"
 
-            df_mes_det = df_mes_det.sort_values("monto", ascending=False)
-            df_mes_det["fecha_str"] = df_mes_det["fecha"].dt.strftime("%Y-%m-%d")
+    if df_drill.empty:
+        st.info(f"Sin transacciones en {drill_per}{sub_label}")
+    else:
+        st.markdown(
+            f"**{drill_per}{sub_label}** — "
+            f"**{fmt_clp(df_drill['monto'].sum())}** en **{len(df_drill)}** transacciones"
+        )
 
-            for idx, row in df_mes_det.iterrows():
-                key_id = f"{row['fecha_str']}|{row['descripcion']}|{row['monto']}"
-                c1, c2, c3, c4, c5 = st.columns([2, 5, 3, 2, 1])
-                with c1: st.write(row["fecha_str"])
-                with c2: st.write(row["descripcion"])
-                with c3: st.write(f"{row['subcategoria']}")
-                with c4: st.write(fmt_clp_safe(row["monto"]))
-                with c5:
-                    flag_label = "🚩" if key_id not in st.session_state["feedback"] else "✅"
-                    if st.button(flag_label, key=f"flag_{idx}", help="Marcar para recategorizar"):
-                        if key_id not in st.session_state["feedback"]:
-                            st.session_state["feedback"][key_id] = {
-                                "fecha": row["fecha_str"],
-                                "descripcion": row["descripcion"],
-                                "categoria_actual": f"{row['top_level']} › {row['subcategoria']}",
-                                "monto": row["monto"],
-                            }
-                            st.rerun()
-                        else:
-                            del st.session_state["feedback"][key_id]
-                            st.rerun()
-
-            # ── Feedback acumulado ─────────────────────────
-            if st.session_state.get("feedback"):
-                with st.expander(f"📋 Feedback pendiente ({len(st.session_state['feedback'])} items)"):
-                    fb_df = pd.DataFrame(st.session_state["feedback"].values())
-                    fb_df["monto"] = fb_df["monto"].apply(fmt_clp)
-                    st.dataframe(fb_df, hide_index=True, use_container_width=True)
-                    st.caption("Usa esta lista para agregar patrones en `dashboard/categorias.py`")
-                    if st.button("🗑️ Limpiar feedback"):
-                        st.session_state["feedback"] = {}
-                        st.rerun()
+        # Tabla de transacciones
+        tbl_drill = df_drill[["fecha", "descripcion", "subcategoria", "monto"]].copy()
+        tbl_drill = tbl_drill.sort_values("monto", ascending=False)
+        tbl_drill["fecha"] = tbl_drill["fecha"].dt.strftime("%Y-%m-%d")
+        tbl_drill["monto"] = tbl_drill["monto"].apply(fmt_clp_safe)
+        tbl_drill.columns = ["Fecha", "Descripción", "Subcategoría", "Monto"]
+        st.dataframe(tbl_drill, hide_index=True, use_container_width=True, height=400)
 
     # ── TABLA: RESUMEN POR SUBCATEGORÍA ───────────────────
     st.divider()
