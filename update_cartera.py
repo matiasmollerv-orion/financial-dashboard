@@ -248,13 +248,81 @@ def get_previous_cartera_total() -> float:
         return 0.0
 
 
+# ── VALIDACIONES ESTRUCTURALES ──────────────────────────────
+# Si alguna falla, update_cartera.py ABORTA y no sobreescribe.
+# Esto previene que código roto destruya la cartera.
+
+# Tickers que SIEMPRE deben existir (posiciones grandes que nunca deberían desaparecer)
+REQUIRED_TICKERS = {
+    "nacional": ["BCI", "CENCOSUD", "FALABELLA", "ITAUCL", "LTM",
+                  "ENELCHILE_STG", "LTM_STG"],
+    "internacional": ["NVDA", "GOOGL", "VOO", "MSFT", "NU", "TSM", "MELI"],
+    "crypto": ["BTC", "ETH"],
+}
+MIN_POSITIONS = 90          # base actual tiene 97; si baja de 90, algo está roto
+MIN_NACIONAL_CLP = 15_000_000   # nacional nunca debería estar bajo 15M CLP
+MIN_INTL_USD = 50_000           # internacional nunca debería estar bajo 50K USD
+
+
+def validate_cartera(df: pd.DataFrame) -> list[str]:
+    """Validaciones estructurales. Retorna lista de errores (vacía = OK)."""
+    errors = []
+
+    # 1. Mínimo de posiciones
+    n = len(df)
+    if n < MIN_POSITIONS:
+        errors.append(f"Solo {n} posiciones (mínimo {MIN_POSITIONS}). Probablemente cartera_base.py incompleta.")
+
+    # 2. Tickers obligatorios
+    tickers_presentes = set(df["ticker"].str.upper())
+    for mercado, required in REQUIRED_TICKERS.items():
+        for tk in required:
+            if tk.upper() not in tickers_presentes:
+                errors.append(f"Ticker obligatorio FALTA: {tk} ({mercado})")
+
+    # 3. Valor mínimo por mercado
+    df_v = df.copy()
+    df_v["cantidad"] = pd.to_numeric(df_v["cantidad"], errors="coerce").fillna(0)
+    df_v["precio_actual"] = pd.to_numeric(df_v["precio_actual"], errors="coerce").fillna(0)
+    df_v["_val"] = df_v["cantidad"] * df_v["precio_actual"]
+
+    nac_total = df_v[df_v["mercado"] == "nacional"]["_val"].sum()
+    if nac_total < MIN_NACIONAL_CLP:
+        errors.append(f"Nacional ${nac_total:,.0f} CLP < mínimo ${MIN_NACIONAL_CLP:,.0f}. Faltan stocks.")
+
+    intl_total = df_v[df_v["mercado"] == "internacional"]["_val"].sum()
+    if intl_total < MIN_INTL_USD:
+        errors.append(f"Internacional USD {intl_total:,.0f} < mínimo USD {MIN_INTL_USD:,.0f}. Faltan stocks.")
+
+    # 4. Cantidades no deben ser NaN o negativas
+    nan_rows = df_v[df_v["cantidad"].isna() | (df_v["cantidad"] < 0)]
+    if not nan_rows.empty:
+        bad_tks = nan_rows["ticker"].tolist()
+        errors.append(f"Cantidades NaN/negativas en: {bad_tks}")
+
+    return errors
+
+
 def write_cartera(df: pd.DataFrame, force: bool = False):
-    """Escribe cartera_actual con sanity check.
-    Si la cartera cae >25% vs anterior y no es force, aborta y mantiene la previa."""
+    """Escribe cartera_actual con múltiples sanity checks.
+    NUNCA sobreescribe si las validaciones estructurales fallan (ni con --force).
+    El --force solo bypasea el check de caída porcentual vs anterior."""
     USD_CLP_LOCAL = 901.76
     sb = get_client()
 
-    # Sanity check antes de escribir
+    # ── Validación estructural (NUNCA se puede saltar) ────
+    structural_errors = validate_cartera(df)
+    if structural_errors:
+        print(f"\n🚨 VALIDACIÓN ESTRUCTURAL FALLÓ ({len(structural_errors)} errores):")
+        for e in structural_errors:
+            print(f"   ❌ {e}")
+        print(f"\n   La cartera anterior se MANTIENE intacta.")
+        print(f"   Esto NO se puede saltar con --force. Revisa cartera_base.py.")
+        raise RuntimeError(
+            f"Validación estructural falló: {'; '.join(structural_errors)}"
+        )
+
+    # ── Sanity check vs cartera anterior (se puede saltar con --force) ────
     df_local = df.copy()
     df_local["cantidad"] = pd.to_numeric(df_local["cantidad"], errors="coerce").fillna(0)
     df_local["precio_actual"] = pd.to_numeric(df_local["precio_actual"], errors="coerce").fillna(0)
@@ -285,7 +353,7 @@ def write_cartera(df: pd.DataFrame, force: bool = False):
             print(f"   Previa: ${prev_total:,.0f} → Nueva: ${new_total:,.0f}")
             print(f"   Continúo escribiendo, pero revisa si es esperado.")
 
-    # OK, escribir
+    # ── OK, escribir ──────────────────────────────────────
     sb.table("cartera_actual").delete().neq("id", 0).execute()
     records = df.drop(columns=["id", "created_at", "_valor_usd", "_valor_clp"], errors="ignore").to_dict("records")
     for r in records:
