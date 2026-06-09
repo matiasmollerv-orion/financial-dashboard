@@ -139,13 +139,48 @@ def calc_metrics(close: pd.Series, volume: pd.Series) -> dict:
 
 # ── CONNORS DIP RULES ──────────────────────────────────────
 def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
-                           tesis: str = "", bucket: str = "") -> list:
-    """Aplica reglas Connors sobre un ticker. Retorna list[dict] de alertas."""
+                           tesis: str = "", bucket: str = "",
+                           conviction: str = "cartera") -> list:
+    """Aplica reglas Connors sobre un ticker. Retorna list[dict] de alertas.
+
+    conviction: "cartera" | "recurrente" | "tier1" | "tier2" | "tier3"
+      - cartera/recurrente/tier1: sugerencia = COMPRAR con monto
+      - tier2: sugerencia = EVALUAR COMPRA (oportunístico)
+      - tier3: sugerencia = EVALUAR solamente (seguimiento, sin acción)
+    """
     alerts = []
     dips = rules.get("dips", {})
     momentum = rules.get("momentum", {})
     ctx = f" [{bucket}]" if bucket else ""
     tesis_note = f" Tesis: {tesis}" if tesis else ""
+
+    # Ajustar sugerencia y severidad según nivel de convicción
+    is_actionable = conviction in ("cartera", "recurrente", "tier1")
+    is_tier2 = conviction == "tier2"
+    # tier3 = solo evaluar
+
+    def _sugerencia_dip(rule_name, rule_cfg):
+        lo = rule_cfg.get("accion_min_usd", 150)
+        hi = rule_cfg.get("accion_max_usd", 250)
+        if is_actionable:
+            if rule_name == "small_dip":
+                return f"Considerar compra USD {lo}-{hi}."
+            elif rule_name == "medium_dip":
+                return f"Compra puntual USD {lo}-{hi} si tesis intacta."
+            elif rule_name == "large_dip":
+                return f"Oportunidad agresiva USD {lo}-{hi}."
+            elif rule_name == "bear_crash":
+                return f"MANUAL REVIEW. Si tesis viva, compra USD {lo}-{hi}."
+        elif is_tier2:
+            return f"Evaluar compra oportunística. Entry si tesis OK."
+        else:  # tier3
+            return f"Solo seguimiento. Evaluar si tesis mejora para subir a Tier 2."
+
+    def _severidad(base_sev):
+        """Tier 3 baja severidad; Tier 2 mantiene; cartera/recurrente/tier1 normal."""
+        if conviction == "tier3":
+            return "info" if base_sev == "media" else "media"
+        return base_sev
 
     # 1. DIP CHICO (-10% en 5d)
     rule = dips.get("small_dip", {})
@@ -159,14 +194,14 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
         if ok:
             alerts.append({
                 "categoria":  "oportunidad_dip",
-                "severidad":  "media",
+                "severidad":  _severidad("media"),
                 "activo":     ticker,
                 "titulo":     f"DIP CHICO en {ticker}{ctx}",
                 "mensaje":    f"{ticker} cayo {m['pct_5d']:.1f}% en 5d. "
                               f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
                 "metricas":   {"pct_5d": round(m["pct_5d"], 2), "precio": m["precio_actual"],
-                               "bucket": bucket, "rule": "small_dip"},
-                "sugerencia": f"Considerar compra USD {rule.get('accion_min_usd', 150)}-{rule.get('accion_max_usd', 250)}.",
+                               "bucket": bucket, "rule": "small_dip", "conviction": conviction},
+                "sugerencia": _sugerencia_dip("small_dip", rule),
             })
 
     # 2. DIP MEDIO (-15% en 20d)
@@ -178,14 +213,14 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
         if ok:
             alerts.append({
                 "categoria":  "oportunidad_dip",
-                "severidad":  "alta",
+                "severidad":  _severidad("alta"),
                 "activo":     ticker,
                 "titulo":     f"DIP MEDIO en {ticker}{ctx}",
                 "mensaje":    f"{ticker} cayo {m['pct_20d']:.1f}% en 20d. "
                               f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
                 "metricas":   {"pct_20d": round(m["pct_20d"], 2), "precio": m["precio_actual"],
-                               "bucket": bucket, "rule": "medium_dip"},
-                "sugerencia": f"Compra puntual USD {rule.get('accion_min_usd', 300)}-{rule.get('accion_max_usd', 500)} si tesis intacta.",
+                               "bucket": bucket, "rule": "medium_dip", "conviction": conviction},
+                "sugerencia": _sugerencia_dip("medium_dip", rule),
             })
 
     # 3. DIP GRANDE (-25% en 60d)
@@ -193,14 +228,14 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
     if m["pct_60d"] is not None and m["pct_60d"] <= rule.get("threshold_pct", -25):
         alerts.append({
             "categoria":  "oportunidad_dip",
-            "severidad":  "alta",
+            "severidad":  _severidad("alta"),
             "activo":     ticker,
             "titulo":     f"DIP GRANDE en {ticker}{ctx}",
             "mensaje":    f"{ticker} cayo {m['pct_60d']:.1f}% en 60d. "
                           f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
             "metricas":   {"pct_60d": round(m["pct_60d"], 2), "precio": m["precio_actual"],
-                           "bucket": bucket, "rule": "large_dip"},
-            "sugerencia": f"Oportunidad agresiva USD {rule.get('accion_min_usd', 600)}-{rule.get('accion_max_usd', 1000)}.",
+                           "bucket": bucket, "rule": "large_dip", "conviction": conviction},
+            "sugerencia": _sugerencia_dip("large_dip", rule),
         })
 
     # 4. BEAR CRASH (-40% desde ATH)
@@ -208,14 +243,15 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
     if m["pct_from_ath"] is not None and m["pct_from_ath"] <= rule.get("threshold_pct", -40):
         alerts.append({
             "categoria":  "oportunidad_dip",
-            "severidad":  "critica",
+            "severidad":  _severidad("critica"),
             "activo":     ticker,
             "titulo":     f"BEAR CRASH en {ticker}{ctx}",
             "mensaje":    f"{ticker} bajo {m['pct_from_ath']:.1f}% desde ATH. "
                           f"USD {m['precio_actual']:.2f} vs ATH USD {m['ath_252d']:.2f}.{tesis_note}",
             "metricas":   {"pct_from_ath": round(m["pct_from_ath"], 2), "precio": m["precio_actual"],
-                           "ath": m["ath_252d"], "bucket": bucket, "rule": "bear_crash"},
-            "sugerencia": f"MANUAL REVIEW. Si tesis viva, compra USD {rule.get('accion_min_usd', 1500)}-{rule.get('accion_max_usd', 2500)}.",
+                           "ath": m["ath_252d"], "bucket": bucket, "rule": "bear_crash",
+                           "conviction": conviction},
+            "sugerencia": _sugerencia_dip("bear_crash", rule),
         })
 
     # 5. MOMENTUM EXTREMO (+30% en 20d)
@@ -223,13 +259,13 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
     if m["pct_20d"] is not None and m["pct_20d"] >= rule.get("threshold_pct", 30):
         alerts.append({
             "categoria":  "momentum_warning",
-            "severidad":  "media",
+            "severidad":  _severidad("media"),
             "activo":     ticker,
             "titulo":     f"MOMENTUM EXTREMO en {ticker}{ctx}",
             "mensaje":    f"{ticker} subio +{m['pct_20d']:.1f}% en 20d. "
                           f"Precio: USD {m['precio_actual']:.2f}.",
             "metricas":   {"pct_20d": round(m["pct_20d"], 2), "precio": m["precio_actual"],
-                           "bucket": bucket, "rule": "extreme_rally"},
+                           "bucket": bucket, "rule": "extreme_rally", "conviction": conviction},
             "sugerencia": "NO comprar. Evaluar trim parcial 25-30%.",
         })
 
@@ -437,8 +473,31 @@ def main():
     gf = rules.get("global_filters", {})
 
     # ── Build ticker universe ────────────────────────────────
+    # conviction levels: "cartera" | "recurrente" | "tier1" | "tier2" | "tier3"
+    #   cartera/recurrente/tier1 → COMPRAR con monto
+    #   tier2 → EVALUAR COMPRA (oportunístico)
+    #   tier3 → EVALUAR solamente (seguimiento)
+
+    # Pre-build sets for conviction lookup
+    recurrente_tickers = {r["ticker"] for r in wl_cfg.get("recurrente", []) if r.get("ticker")}
+    tier1_tickers = {i["ticker"] for i in wl_cfg.get("watchlist", {}).get("tier1", []) if i.get("ticker")}
+    tier2_tickers = {i["ticker"] for i in wl_cfg.get("watchlist", {}).get("tier2", []) if i.get("ticker")}
+    tier3_tickers = {i["ticker"] for i in wl_cfg.get("watchlist", {}).get("tier3", []) if i.get("ticker")}
+
+    def _get_conviction(tk: str) -> str:
+        """Devuelve nivel de convicción más alto que aplique."""
+        if tk in recurrente_tickers:
+            return "recurrente"
+        if tk in tier1_tickers:
+            return "tier1"
+        if tk in tier2_tickers:
+            return "tier2"
+        if tk in tier3_tickers:
+            return "tier3"
+        return "cartera"  # posición en cartera sin categoría especial
+
     # 1. Cartera positions (above minimum value)
-    tickers_to_eval = {}  # ticker -> {mercado, tesis, bucket}
+    tickers_to_eval = {}  # ticker -> {mercado, tesis, bucket, conviction}
     if not df_cart.empty:
         min_val = gf.get("min_position_or_watchlist_usd", 100) * USD_CLP
         for _, row in df_cart.iterrows():
@@ -459,6 +518,7 @@ def main():
                 "mercado": row.get("mercado", "internacional"),
                 "tesis": tesis,
                 "bucket": bucket,
+                "conviction": _get_conviction(tk),
             }
 
     # 2. Watchlist tickers (all tiers)
@@ -470,9 +530,10 @@ def main():
                     "mercado": "internacional",
                     "tesis": item.get("tesis", ""),
                     "bucket": item.get("bucket", ""),
+                    "conviction": tier_key,
                 }
 
-    # 3. Acciones pendientes
+    # 3. Acciones pendientes (alta convicción, son explícitamente pedidas)
     for item in wl_cfg.get("acciones_pendientes", []):
         tk = item.get("ticker")
         if tk and tk not in excluded and tk not in tickers_to_eval:
@@ -480,6 +541,7 @@ def main():
                 "mercado": "internacional",
                 "tesis": item.get("nota", ""),
                 "bucket": "",
+                "conviction": "cartera",
             }
 
     if args.ticker:
@@ -535,7 +597,12 @@ def main():
     print("Connors DIP rules...")
     for tk, m in metrics_map.items():
         info = tickers_to_eval.get(tk, {})
-        alerts = evaluate_connors_rules(tk, m, rules, info.get("tesis", ""), info.get("bucket", ""))
+        alerts = evaluate_connors_rules(
+            tk, m, rules,
+            tesis=info.get("tesis", ""),
+            bucket=info.get("bucket", ""),
+            conviction=info.get("conviction", "cartera"),
+        )
         all_alerts.extend(alerts)
     print(f"  {len(all_alerts)} alertas DIP/momentum")
 
