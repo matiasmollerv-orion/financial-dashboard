@@ -261,7 +261,13 @@ def fetch_all(hours_back: int = 24) -> list[dict]:
     # Top cartera + Tier 1 watchlist tickers
     print(f"\n  📡 Yahoo Finance por ticker (cartera + watchlist)...")
     sb = get_client()
-    cart = sb.table("cartera_actual").select("ticker,valor_usd").execute()
+    cart = sb.table("cartera_actual").select("ticker,cantidad,precio_actual").execute()
+    # Calculate valor_usd inline (cantidad × precio_actual)
+    for row in cart.data:
+        try:
+            row["valor_usd"] = float(row.get("cantidad") or 0) * float(row.get("precio_actual") or 0)
+        except (ValueError, TypeError):
+            row["valor_usd"] = 0
     # Sort by value, take top 10
     import yaml as _yaml
     from pathlib import Path as _Path
