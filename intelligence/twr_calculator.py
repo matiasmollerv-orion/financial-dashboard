@@ -36,12 +36,34 @@ USD_CLP = 901.76  # TODO: histórico, por ahora fijo
 
 
 # ── HELPERS ──────────────────────────────────────────────────
-def get_ticker_meta() -> dict:
-    """Map ticker → {mercado, moneda, cantidad_base}."""
+def get_ticker_meta(plataforma: str = None) -> dict:
+    """Map ticker → {mercado, moneda, cantidad_base}.
+
+    plataforma: filtro opcional:
+      None/"Todo"   → todos los tickers
+      "Racional Internacional" → mercado=internacional (sin _STG)
+      "Racional Nacional"      → mercado=nacional sin sufijo _STG
+      "Santander Corredora"    → tickers con sufijo _STG
+      "Crypto (Buda)"          → mercado=crypto
+    """
     meta = {}
     for row in ACCIONES_CL + STOCKS_INTL + CRYPTO:
-        meta[row["ticker"]] = {
-            "mercado": row["mercado"],
+        tk = row["ticker"]
+        mercado = row["mercado"]
+
+        # Filtrar por plataforma si se pide
+        if plataforma and plataforma not in (None, "Todo"):
+            if plataforma == "Racional Internacional" and mercado != "internacional":
+                continue
+            elif plataforma == "Racional Nacional" and (mercado != "nacional" or tk.endswith("_STG")):
+                continue
+            elif plataforma == "Santander Corredora" and not tk.endswith("_STG"):
+                continue
+            elif plataforma == "Crypto (Buda)" and mercado != "crypto":
+                continue
+
+        meta[tk] = {
+            "mercado": mercado,
             "moneda":  row["moneda"],
             "cantidad_base": row["cantidad"],
         }
@@ -101,7 +123,8 @@ def fetch_prices(yf_tickers: list, start: str, end: str) -> pd.DataFrame:
 # ── CÁLCULO PRINCIPAL ─────────────────────────────────────────
 def compute_twr(start_date: str = SNAPSHOT_DATE,
                 end_date: str = None,
-                verbose: bool = True) -> dict:
+                verbose: bool = True,
+                plataforma: str = None) -> dict:
     """
     Calcula TWR para cualquier período. Dos modos:
       - Si start_date >= SNAPSHOT_DATE: usa cantidad_base del snapshot + deltas (modo original)
@@ -118,8 +141,8 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
         mode = "HISTÓRICO (desde transacciones)" if pre_snapshot else "POST-SNAPSHOT (desde base)"
         print(f"\n📅 Calculando TWR: {start_date} → {end_date} [{mode}]")
 
-    # 1. Ticker meta
-    meta = get_ticker_meta()
+    # 1. Ticker meta (filtrado por plataforma si se pide)
+    meta = get_ticker_meta(plataforma)
 
     # 2. Transacciones — traer TODAS si modo histórico, o solo post-start si post-snapshot
     if pre_snapshot:
@@ -138,8 +161,26 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
         buda["fecha"] = pd.to_datetime(buda["fecha"]).dt.tz_localize(None)
         buda["cantidad"] = pd.to_numeric(buda["cantidad"], errors="coerce").fillna(0)
 
+    # Filtrar transacciones por plataforma
+    if plataforma and plataforma not in (None, "Todo"):
+        if plataforma == "Racional Internacional":
+            if not rac.empty:
+                rac = rac[rac["mercado"] == "internacional"]
+            buda = pd.DataFrame()  # no incluir crypto
+        elif plataforma == "Racional Nacional":
+            if not rac.empty:
+                rac = rac[rac["mercado"] == "nacional"]
+            buda = pd.DataFrame()
+        elif plataforma == "Santander Corredora":
+            rac = pd.DataFrame()   # Santander no tiene transacciones en Racional
+            buda = pd.DataFrame()
+        elif plataforma == "Crypto (Buda)":
+            rac = pd.DataFrame()   # solo buda
+            # buda se mantiene
+
     if verbose:
-        print(f"   {len(rac)} transacciones Racional · {len(buda)} compras Buda")
+        plat_str = f" [{plataforma}]" if plataforma else ""
+        print(f"   {len(rac)} transacciones Racional · {len(buda)} compras Buda{plat_str}")
 
     # 3. Descubrir todos los tickers que aparecen en transacciones
     if not rac.empty:

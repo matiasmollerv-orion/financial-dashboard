@@ -106,14 +106,15 @@ def mwr_portfolio(snapshot_date: str = SNAPSHOT_DATE,
                   end_date: str = None,
                   valor_inicial: float = None,
                   valor_final: float = None,
-                  flujo_series: pd.Series = None) -> float:
+                  flujo_series: pd.Series = None,
+                  plataforma: str = None) -> float:
     """
     MWR/XIRR del portafolio entre snapshot y hoy.
     Si se entregan valor_inicial/final/flujo_series los usa,
     sino los calcula via compute_twr.
     """
     if valor_inicial is None or valor_final is None or flujo_series is None:
-        twr_data = compute_twr(snapshot_date, end_date, verbose=False)
+        twr_data = compute_twr(snapshot_date, end_date, verbose=False, plataforma=plataforma)
         if not twr_data:
             return None
         valor_inicial = twr_data["valor_inicial"]
@@ -144,7 +145,8 @@ def twr_compuesto(twr_pre_pct: float, twr_post_pct: float) -> float:
 # ── ORQUESTADOR — TODAS LAS MÉTRICAS ─────────────────────────
 def compute_all_returns(snapshot_date: str = SNAPSHOT_DATE,
                         end_date: str = None,
-                        twr_pre_snapshot_pct: float = None) -> dict:
+                        twr_pre_snapshot_pct: float = None,
+                        plataforma: str = None) -> dict:
     """
     Calcula TODAS las métricas y las retorna en un dict.
     """
@@ -158,8 +160,8 @@ def compute_all_returns(snapshot_date: str = SNAPSHOT_DATE,
     cart = retorno_cartera_actual()
 
     # B+C+E. TWR del período (incluye valor inicial/final, flujos)
-    print("  ▶ TWR período…")
-    twr_data = compute_twr(snapshot_date, end_date, verbose=False)
+    print(f"  ▶ TWR período…" + (f" [{plataforma}]" if plataforma else ""))
+    twr_data = compute_twr(snapshot_date, end_date, verbose=False, plataforma=plataforma)
     if not twr_data:
         return None
 
@@ -174,7 +176,8 @@ def compute_all_returns(snapshot_date: str = SNAPSHOT_DATE,
     # B. MWR / XIRR
     print("  ▶ MWR (XIRR anualizado)…")
     mwr = mwr_portfolio(snapshot_date, end_date,
-                        valor_ini, valor_fin, twr_data["flujo"])
+                        valor_ini, valor_fin, twr_data["flujo"],
+                        plataforma=plataforma)
     mwr_pct = (mwr * 100) if mwr is not None else None
 
     # E. TWR anualizado

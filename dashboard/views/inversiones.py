@@ -148,17 +148,31 @@ def render():
             "Desde el inicio (2022)":  ("2022-09-01", hoy.isoformat()),
         }
 
-        col_p1, col_p2 = st.columns([1, 2])
+        col_p1, col_p2, col_p3 = st.columns([1, 1, 1])
         with col_p1:
             periodo_sel = st.selectbox(
                 "Período",
                 list(opciones_periodo.keys()),
-                index=6,  # default: desde snapshot (más útil para compararse con Racional)
+                index=6,  # default: desde snapshot
                 key="rent_periodo",
             )
         start_date, end_date = opciones_periodo[periodo_sel]
         with col_p2:
-            st.markdown(f"<br><span style='color:#888;'>Calculando {start_date} → {end_date}</span>",
+            plataforma_opts = [
+                "Todo",
+                "Racional Internacional",
+                "Racional Nacional",
+                "Santander Corredora",
+                "Crypto (Buda)",
+            ]
+            plataforma_sel = st.selectbox(
+                "Plataforma",
+                plataforma_opts,
+                index=0,
+                key="rent_plataforma",
+            )
+        with col_p3:
+            st.markdown(f"<br><span style='color:#888;'>{start_date} → {end_date}</span>",
                         unsafe_allow_html=True)
 
         # Nota informativa si el período es pre-snapshot (ahora SÍ soportado)
@@ -187,16 +201,17 @@ def render():
 
         # ── Cálculo (cacheado) ───────────────────────────────
         @st.cache_data(ttl=1800, show_spinner=False)
-        def _calc(start, end, twr_pre_val):
+        def _calc(start, end, twr_pre_val, plataforma=None):
             try:
                 from intelligence.returns import compute_all_returns
-                return compute_all_returns(start, end, twr_pre_val)
+                return compute_all_returns(start, end, twr_pre_val, plataforma=plataforma)
             except Exception as e:
                 st.error(f"Error: {e}")
                 return None
 
+        plat_arg = plataforma_sel if plataforma_sel != "Todo" else None
         with st.spinner("Calculando todas las métricas (descarga precios históricos)…"):
-            r = _calc(start_date, end_date, twr_pre)
+            r = _calc(start_date, end_date, twr_pre, plat_arg)
 
         if not r:
             st.warning("No se pudo calcular. Reintenta más tarde.")
@@ -285,7 +300,69 @@ def render():
                     ),
                 })
 
+            # ── Comparación MWR vs TWR (timing) ─────────────
+            if r.get('mwr_pct') is not None:
+                mwr_val = r['mwr_pct']
+                twr_val = r['twr_pct']
+                # MWR es anualizado, TWR del período no. Para comparar,
+                # usamos TWR anualizado si existe
+                twr_anual = r.get('twr_anualizado_pct')
+                if twr_anual is not None:
+                    diff = mwr_val - twr_anual
+                    twr_comp = twr_anual
+                    twr_label = "TWR anualizado"
+                else:
+                    diff = mwr_val - twr_val
+                    twr_comp = twr_val
+                    twr_label = "TWR período"
+
+                if diff > 0.5:
+                    timing_emoji = "🟢"
+                    timing_msg = f"Buen timing: compraste más cuando estaba barato. Tu rentabilidad personal supera al portafolio por **{diff:+.2f}pp**."
+                elif diff < -0.5:
+                    timing_emoji = "🔴"
+                    timing_msg = f"Timing mejorable: compraste más cuando estaba caro. Tu rentabilidad personal está **{diff:.2f}pp** bajo el portafolio."
+                else:
+                    timing_emoji = "⚪"
+                    timing_msg = f"Timing neutro: no hubo diferencia significativa entre tu timing y el portafolio ({diff:+.2f}pp)."
+
+                st.divider()
+                st.markdown("### ⏱ ¿Tu timing fue bueno?")
+                st.markdown(
+                    f"""
+<div style="background:#1e2130; padding:18px; border-radius:10px; border-left: 4px solid {'#2ecc71' if diff > 0.5 else '#e74c3c' if diff < -0.5 else '#888'}; margin-bottom:14px;">
+  <div style="display:flex; gap:30px; align-items:center; margin-bottom:12px;">
+    <div>
+      <div style="color:#8892b0; font-size:0.85rem;">MWR (tu timing)</div>
+      <div style="color:#ccd6f6; font-size:1.5rem; font-weight:700;">{mwr_val:.2f}%</div>
+    </div>
+    <div style="color:#8892b0; font-size:1.5rem;">vs</div>
+    <div>
+      <div style="color:#8892b0; font-size:0.85rem;">{twr_label} (portafolio)</div>
+      <div style="color:#ccd6f6; font-size:1.5rem; font-weight:700;">{twr_comp:.2f}%</div>
+    </div>
+    <div style="color:#8892b0; font-size:1.5rem;">→</div>
+    <div>
+      <div style="color:#8892b0; font-size:0.85rem;">Diferencia</div>
+      <div style="color:{'#2ecc71' if diff > 0 else '#e74c3c'}; font-size:1.5rem; font-weight:700;">{diff:+.2f}pp {timing_emoji}</div>
+    </div>
+  </div>
+  <div style="color:#a0aec0; font-size:0.9rem;">
+    {timing_msg}
+  </div>
+  <div style="color:#666; font-size:0.8rem; margin-top:8px;">
+    MWR = Money-Weighted Return (XIRR anualizado). Pondera más los períodos donde tenías más plata invertida.<br>
+    Si MWR > TWR → compraste antes de subidas. Si MWR &lt; TWR → compraste antes de caídas.
+  </div>
+</div>
+""",
+                    unsafe_allow_html=True,
+                )
+
+            st.divider()
+
             # Render en grilla de 2 columnas
+            st.markdown("### 🧮 Detalle de las 5 métricas")
             for i in range(0, len(METRICAS), 2):
                 col_a, col_b = st.columns(2)
                 for col, m in zip([col_a, col_b], METRICAS[i:i+2]):
