@@ -175,11 +175,14 @@ def render():
             st.markdown(f"<br><span style='color:#888;'>{start_date} → {end_date}</span>",
                         unsafe_allow_html=True)
 
-        # Nota informativa si el período es pre-snapshot (ahora SÍ soportado)
+        # Nota informativa si el período es pre-snapshot
         if pd.Timestamp(start_date) < pd.Timestamp(_snap):
-            st.info(
-                f"ℹ️ Período pre-snapshot ({start_date} → {_snap}): "
-                f"reconstruyendo posiciones desde historial completo de transacciones."
+            st.warning(
+                f"⚠️ **TWR aproximado** — El período {start_date} → {_snap} reconstruye posiciones "
+                f"desde transacciones, pero **~20 tickers no tienen historial completo** "
+                f"(se compraron antes del inicio de la carga de emails). "
+                f"Para YTD confiable, usa **\"Desde snapshot Racional\"** y compone con el TWR "
+                f"que Racional reporta al {_snap}."
             )
 
         # ── TWR Pre-snapshot (solo relevante si período = desde snapshot) ──
@@ -190,12 +193,12 @@ def render():
                     "TWR Racional al snapshot (%)",
                     value=float(_twr_pre_default),
                     step=0.5,
-                    help="Valor de 'Rentabilidad desde el inicio' que Racional reportaba al 30/04/2026."
+                    help="Valor de 'Rentabilidad desde el inicio' que Racional reportaba al 31/05/2026."
                 )
             with col_inp2:
                 st.markdown("<br>", unsafe_allow_html=True)
                 st.caption(f"Componer con {twr_pre:.1f}% del período pre-snapshot. "
-                           f"Mira el valor exacto en Racional al 30/04/2026.")
+                           f"Mira el valor exacto en Racional al 31/05/2026.")
         else:
             twr_pre = None
 
@@ -294,7 +297,7 @@ def render():
                     "valor": f"{r['twr_desde_inicio_pct']:.2f}%",
                     "formula": f"(1 + {twr_pre:.1f}%) × (1 + {r['twr_pct']:.2f}%) − 1",
                     "descripcion": (
-                        f"Compone el TWR pre-snapshot (lo que Racional reportaba al 30/04/2026 = {twr_pre:.1f}%) "
+                        f"Compone el TWR pre-snapshot (lo que Racional reportaba al 31/05/2026 = {twr_pre:.1f}%) "
                         f"con el TWR calculado en el período. **Lo más cercano al 'rentabilidad desde el inicio' "
                         f"de Racional.**"
                     ),

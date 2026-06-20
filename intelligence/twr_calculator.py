@@ -72,7 +72,9 @@ def get_ticker_meta(plataforma: str = None) -> dict:
 
 def yf_ticker_for(ticker: str, mercado: str) -> str:
     if mercado == "nacional":
-        return f"{ticker}.SN"
+        # Strip _STG suffix for Santander Corredora tickers
+        base = ticker.replace("_STG", "") if ticker.endswith("_STG") else ticker
+        return f"{base}.SN"
     if mercado == "crypto":
         return f"{ticker}-USD"
     return ticker
@@ -200,11 +202,19 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
 
     # 5. Construir DataFrame de cantidades diarias por ticker
     if pre_snapshot:
-        # Modo histórico: reconstruir posiciones desde TODAS las transacciones.
-        # Transacciones ANTES del start_date → posición inicial (se aplican a todo el rango).
-        # Transacciones DENTRO del período → se aplican desde su fecha en adelante.
+        # Modo BACKWARD: partir del snapshot (cantidades conocidas) y RESTAR
+        # transacciones entre start_date y SNAPSHOT_DATE para obtener posiciones
+        # al start_date. Esto captura TODOS los tickers incluyendo los que no
+        # tienen historial de transacciones completo.
         start_ts = pd.Timestamp(start_date)
-        qty_df = pd.DataFrame(0.0, index=dates, columns=all_tickers)
+        snap_ts = pd.Timestamp(SNAPSHOT_DATE)
+
+        # Inicializar con cantidades del snapshot para TODOS los tickers
+        qty_df = pd.DataFrame(
+            {tk: np.full(len(dates), float(meta[tk]["cantidad_base"]), dtype=np.float64)
+             for tk in all_tickers},
+            index=dates,
+        )
 
         if not rac.empty:
             for _, row in rac.iterrows():
@@ -215,27 +225,37 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
                     continue
                 delta = float(row["acciones"]) if row["tipo"] == "compra" else -float(row["acciones"])
                 tx_date = row["fecha"].normalize()
-                if tx_date < start_ts:
-                    # Transacción anterior al período → afecta TODA la serie (posición inicial)
-                    qty_df[tk] = qty_df[tk].astype(np.float64) + delta
-                else:
-                    # Transacción dentro del período → afecta desde su fecha
+
+                if tx_date > snap_ts:
+                    # Transacción POST-snapshot: aplicar normalmente desde su fecha
                     mask = qty_df.index >= tx_date
                     qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + delta
+                elif tx_date > start_ts:
+                    # Transacción ENTRE start y snapshot: se aplica desde tx_date,
+                    # pero ANTES de tx_date la posición era (snapshot - delta)
+                    mask_before = qty_df.index < tx_date
+                    qty_df.loc[mask_before, tk] = qty_df.loc[mask_before, tk].astype(np.float64) - delta
+                else:
+                    # Transacción ANTES del start_date: ya está incluida en el
+                    # snapshot, no afecta el período
+                    pass
 
         if not buda.empty:
             for _, row in buda.iterrows():
                 tk = row["activo"]
                 if tk not in qty_df.columns:
-                    qty_df[tk] = 0.0
-                    meta[tk] = {"mercado": "crypto", "moneda": "USD", "cantidad_base": 0}
-                    all_tickers = sorted(set(all_tickers + [tk]))
+                    qty_df[tk] = float(meta.get(tk, {}).get("cantidad_base", 0))
+                    if tk not in meta:
+                        meta[tk] = {"mercado": "crypto", "moneda": "USD", "cantidad_base": 0}
+                        all_tickers = sorted(set(all_tickers + [tk]))
+                delta = float(row["cantidad"])
                 tx_date = row["fecha"].normalize()
-                if tx_date < start_ts:
-                    qty_df[tk] = qty_df[tk].astype(np.float64) + float(row["cantidad"])
-                else:
+                if tx_date > snap_ts:
                     mask = qty_df.index >= tx_date
-                    qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + float(row["cantidad"])
+                    qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + delta
+                elif tx_date > start_ts:
+                    mask_before = qty_df.index < tx_date
+                    qty_df.loc[mask_before, tk] = qty_df.loc[mask_before, tk].astype(np.float64) - delta
 
         # Eliminar tickers que nunca tuvieron posición en el período
         active_tickers = [tk for tk in qty_df.columns if qty_df[tk].abs().max() > 0]
