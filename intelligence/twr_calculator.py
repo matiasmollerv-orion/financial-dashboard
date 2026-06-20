@@ -32,7 +32,39 @@ import numpy as np
 from database.supabase_client import get_client
 from cartera_base import ACCIONES_CL, STOCKS_INTL, CRYPTO, SNAPSHOT_DATE
 
-USD_CLP = 901.76  # TODO: histórico, por ahora fijo
+USD_CLP_FALLBACK = 901.76  # Fallback si yfinance falla
+
+
+def fetch_usdclp_daily(start: str, end: str) -> pd.Series:
+    """Descarga tipo de cambio USD/CLP diario. Retorna Series con index=fecha."""
+    import yfinance as yf
+    try:
+        fx = yf.download("USDCLP=X", start=start, end=end,
+                         interval="1d", progress=False)
+        if not fx.empty:
+            s = fx["Close"].squeeze()
+            if isinstance(s, pd.DataFrame):
+                s = s.iloc[:, 0]
+            s.index = pd.to_datetime(s.index).tz_localize(None)
+            return s
+    except Exception:
+        pass
+    return pd.Series(dtype=float)
+
+
+def get_usdclp_current() -> float:
+    """Retorna tipo de cambio USD/CLP actual (último disponible)."""
+    import yfinance as yf
+    try:
+        fx = yf.download("USDCLP=X", period="5d", interval="1d", progress=False)
+        if not fx.empty:
+            val = fx["Close"].squeeze()
+            if isinstance(val, pd.DataFrame):
+                val = val.iloc[:, 0]
+            return float(val.iloc[-1])
+    except Exception:
+        pass
+    return USD_CLP_FALLBACK
 
 
 # ── HELPERS ──────────────────────────────────────────────────
@@ -317,20 +349,35 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
     # Re-indexar al calendario diario + forward fill (días sin precio = previo)
     prices = prices.reindex(dates).ffill().bfill()
 
-    # 7. Calcular valor diario en CLP
+    # 6b. Descargar tipo de cambio USD/CLP diario
+    has_usd = any(meta[tk]["moneda"] == "USD" for tk in all_tickers)
+    if has_usd:
+        if verbose:
+            print(f"   💱 Descargando tipo de cambio USD/CLP…")
+        fx_raw = fetch_usdclp_daily(start_buf, end_buf)
+        if not fx_raw.empty:
+            fx_daily = fx_raw.reindex(dates).ffill().bfill()
+        else:
+            if verbose:
+                print(f"   ⚠️ No se pudo bajar FX, usando fallback {USD_CLP_FALLBACK}")
+            fx_daily = pd.Series(USD_CLP_FALLBACK, index=dates)
+    else:
+        fx_daily = pd.Series(USD_CLP_FALLBACK, index=dates)
+
+    # 7. Calcular valor diario en CLP (con tipo de cambio del día)
     valor_df = pd.DataFrame(0.0, index=dates, columns=all_tickers)
     for tk in all_tickers:
         if tk not in prices.columns:
             continue
         v_local = qty_df[tk] * prices[tk]
         if meta[tk]["moneda"] == "USD":
-            valor_df[tk] = v_local * USD_CLP
+            valor_df[tk] = v_local * fx_daily
         else:
             valor_df[tk] = v_local
 
     portfolio_value = valor_df.sum(axis=1)
 
-    # 8. Calcular flujos netos diarios en CLP
+    # 8. Calcular flujos netos diarios en CLP (con tipo de cambio del día)
     flujo = pd.Series(0.0, index=dates)
     if not rac.empty:
         for _, row in rac.iterrows():
@@ -338,7 +385,7 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
             if fecha not in flujo.index:
                 continue
             if row["mercado"] == "internacional":
-                monto = row["monto_usd"] * USD_CLP
+                monto = row["monto_usd"] * fx_daily.loc[fecha]
             else:
                 monto = row["monto_clp"]
             if row["tipo"] == "compra":
@@ -355,7 +402,7 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
             if tk in prices.columns:
                 precio = prices.loc[fecha, tk]
                 if pd.notna(precio):
-                    monto_clp = row["cantidad"] * precio * USD_CLP
+                    monto_clp = row["cantidad"] * precio * fx_daily.loc[fecha]
                     flujo.loc[fecha] += monto_clp
 
     # 9. Calcular retornos diarios TWR

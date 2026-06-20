@@ -285,5 +285,16 @@ def load_vector():
 
 
 def get_usd_clp():
-    """Retorna el tipo de cambio USD/CLP guardado."""
-    return 901.76  # Actualizar manualmente o via API
+    """Retorna el tipo de cambio USD/CLP actual via yfinance (con fallback)."""
+    try:
+        import yfinance as yf
+        fx = yf.download("USDCLP=X", period="5d", interval="1d", progress=False)
+        if not fx.empty:
+            import pandas as _pd
+            val = fx["Close"].squeeze()
+            if isinstance(val, _pd.DataFrame):
+                val = val.iloc[:, 0]
+            return float(val.iloc[-1])
+    except Exception:
+        pass
+    return 901.76  # Fallback si yfinance falla

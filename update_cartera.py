@@ -226,10 +226,25 @@ def update_prices(df_cart: pd.DataFrame) -> pd.DataFrame:
     return df
 
 
+def _get_usdclp() -> float:
+    """Tipo de cambio actual via yfinance (con fallback)."""
+    try:
+        import yfinance as yf
+        fx = yf.download("USDCLP=X", period="5d", interval="1d", progress=False)
+        if not fx.empty:
+            val = fx["Close"].squeeze()
+            if isinstance(val, pd.DataFrame):
+                val = val.iloc[:, 0]
+            return float(val.iloc[-1])
+    except Exception:
+        pass
+    return 901.76
+
+
 def get_previous_cartera_total() -> float:
     """Lee el total previo de cartera_actual (antes de sobreescribir).
     Sirve para sanity check: si el nuevo es <75% del previo, abortamos."""
-    USD_CLP_LOCAL = 901.76
+    USD_CLP_LOCAL = _get_usdclp()
     try:
         sb = get_client()
         r = sb.table("cartera_actual").select("*").execute()
@@ -307,7 +322,7 @@ def write_cartera(df: pd.DataFrame, force: bool = False):
     """Escribe cartera_actual con múltiples sanity checks.
     NUNCA sobreescribe si las validaciones estructurales fallan (ni con --force).
     El --force solo bypasea el check de caída porcentual vs anterior."""
-    USD_CLP_LOCAL = 901.76
+    USD_CLP_LOCAL = _get_usdclp()
     sb = get_client()
 
     # ── Validación estructural (NUNCA se puede saltar) ────
@@ -406,7 +421,7 @@ def main():
 
     # 5. Resumen
     df_cart["valor_usd"] = pd.to_numeric(df_cart["cantidad"], errors="coerce") * pd.to_numeric(df_cart["precio_actual"], errors="coerce")
-    USD_CLP = 901.76
+    USD_CLP = _get_usdclp()
     df_cart["valor_clp"] = df_cart.apply(
         lambda r: r["valor_usd"] if r.get("moneda") == "CLP" else r["valor_usd"] * USD_CLP,
         axis=1

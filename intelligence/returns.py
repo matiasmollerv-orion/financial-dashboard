@@ -26,9 +26,7 @@ import numpy as np
 
 from database.supabase_client import get_client
 from cartera_base import ACCIONES_CL, STOCKS_INTL, CRYPTO, SNAPSHOT_DATE
-from intelligence.twr_calculator import compute_twr
-
-USD_CLP = 901.76
+from intelligence.twr_calculator import compute_twr, get_usdclp_current
 
 
 # ── A. Retorno de cartera actual (snapshot vs hoy) ──────────
@@ -38,6 +36,7 @@ def retorno_cartera_actual() -> dict:
     (valor - costo) / costo
     donde costo = cantidad × precio_compra (snapshot)
     """
+    usd_clp = get_usdclp_current()
     sb = get_client()
     r = sb.table("cartera_actual").select("*").execute()
     df = pd.DataFrame(r.data)
@@ -47,10 +46,10 @@ def retorno_cartera_actual() -> dict:
     df["valor_usd"] = df["cantidad"] * df["precio_actual"]
     df["costo_usd"] = df["cantidad"] * df["precio_compra"]
     df["valor_clp"] = df.apply(
-        lambda r: r["valor_usd"] if r.get("moneda") == "CLP" else r["valor_usd"] * USD_CLP, axis=1
+        lambda r: r["valor_usd"] if r.get("moneda") == "CLP" else r["valor_usd"] * usd_clp, axis=1
     )
     df["costo_clp"] = df.apply(
-        lambda r: r["costo_usd"] if r.get("moneda") == "CLP" else r["costo_usd"] * USD_CLP, axis=1
+        lambda r: r["costo_usd"] if r.get("moneda") == "CLP" else r["costo_usd"] * usd_clp, axis=1
     )
 
     valor = df["valor_clp"].sum()
