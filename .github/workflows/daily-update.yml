@@ -31,7 +31,6 @@ jobs:
           echo "SANTANDER_PDF_PASSWORD=${{ secrets.SANTANDER_PDF_PASSWORD }}" >> .env
           echo "GMAIL_USER=${{ secrets.GMAIL_USER }}" >> .env
           echo "GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}" >> .env
-          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
           echo "RECIPIENT_EMAIL=${{ secrets.RECIPIENT_EMAIL }}" >> .env
 
       # Trackeamos qué pasos fallaron en un archivo, y al final decidimos el exit code
@@ -81,17 +80,13 @@ jobs:
           fi
 
       # ── Intelligence Pipeline (después de cartera actualizada) ──
+      # Solo opportunity_detector (reglas Connors + entry targets, sin API)
+      # ai_analyst y daily_brief desactivados para no gastar créditos Anthropic (~$1.80/día)
       - name: Fetch market news (RSS)
         run: python -m intelligence.news_fetcher --hours 26 || echo "news_fetcher" >> /tmp/failures.txt
 
-      - name: AI analysis of news
-        run: python -m intelligence.ai_analyst || echo "ai_analyst" >> /tmp/failures.txt
-
       - name: Detect opportunities (Connors + entry targets)
         run: python -m intelligence.opportunity_detector || echo "opportunity_detector" >> /tmp/failures.txt
-
-      - name: Generate daily brief
-        run: python -m intelligence.daily_brief || echo "daily_brief" >> /tmp/failures.txt
 
       - name: Build and send email report
         run: python -m intelligence.report_builder || echo "report_builder" >> /tmp/failures.txt
