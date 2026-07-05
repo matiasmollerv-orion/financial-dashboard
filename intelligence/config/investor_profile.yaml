@@ -1,0 +1,91 @@
+# =============================================================================
+# INVESTOR PROFILE — Perfil, límites y horizontes de Matías
+# Fuente de verdad para TODAS las decisiones del sistema de alertas.
+# Toda alerta de compra/venta debe pasar por estos filtros.
+# Última actualización: 5 julio 2026 (definido en sesión con Claude)
+# =============================================================================
+
+perfil:
+  nombre: "Matías"
+  moneda_base: "CLP"
+  moneda_inversion: "USD"
+  estilo: "DCA semanal + compras oportunísticas en dips + satélites temáticos"
+
+# ── OBJETIVO EMPRENDIMIENTO (restricción de liquidez más importante) ─────────
+# Matías planea emprender y podría necesitar capital del portafolio.
+objetivo_emprendimiento:
+  horizonte_anios: [1, 2]          # necesita el capital en 1-2 años
+  pct_portafolio_tocable: [20, 30] # 20-30% del portafolio total
+  # Implicación: ese 20-30% debe estar en activos LÍQUIDOS y de BAJA volatilidad
+  # (ETFs core, large caps estables). NO en especulativos (OKLO, IONQ, CRWV...).
+  # El sistema alerta si la porción "estable+líquida" del portafolio cae bajo el
+  # mínimo tocable.
+  activos_elegibles_liquidez:      # qué cuenta como "tocable sin dolor"
+    - VTI
+    - VOO
+    - VT
+    - VXUS
+    - VTV
+    - GLDM
+    - MSFT
+    - GOOGL
+    - AMZN
+
+# ── LÍMITES DE RIESGO ────────────────────────────────────────────────────────
+limites:
+  # Máx % de UNA posición individual sobre el portafolio internacional.
+  # Excluye ETFs core (diversificados por construcción).
+  max_pct_posicion_individual: 12.0
+
+  # Máx % de un bucket temático sobre el portafolio internacional
+  max_pct_bucket: 25.0
+
+  # Capital fresco mensual para compras oportunísticas (además del DCA)
+  cash_oportunistico_usd_mes: [500, 1000]
+
+  # DCA mensual ya comprometido (referencia, no tocar)
+  dca_usd_mes: 1802
+
+# ── HORIZONTES POR TIPO DE POSICIÓN ─────────────────────────────────────────
+# Cada bucket tiene horizonte y regla de salida distinta.
+horizontes:
+  core:            # ETFs diversificados — VTI, VOO, VT, VXUS, VWO...
+    anios: 20
+    venta: "nunca por precio; solo por rebalanceo o necesidad de liquidez"
+  conviccion:      # NU, MELI, NVDA, TSM, ASML, MSFT, GOOGL, AMZN, LLY, UNH
+    anios: [5, 10]
+    venta: "solo si tesis rota o concentración excesiva"
+  satelite:        # EWY, INDA, ILF, GLDM, CCJ, ARES, MU, AVGO
+    anios: [3, 7]
+    venta: "revisión anual de tesis; trim si concentración"
+  especulativo:    # OKLO, IONQ, CRWV, NBIS, CBRS, KTOS, RKLB y small caps
+    anios: [2, 5]
+    venta: "trailing por volatilidad + revisión de tesis con fecha; EVALUAR al duplicar"
+
+# Clasificación explícita de tickers a bucket de horizonte
+# (los no listados: el sistema infiere por watchlist.yaml o asume "satelite")
+clasificacion:
+  core: [VTI, VOO, VT, VXUS, VWO, VTV, BND, BNDX, IEF, VGSH, VTIP, SCHP, GLDM]
+  conviccion: [NU, MELI, NVDA, TSM, ASML, MSFT, GOOGL, AMZN, LLY, UNH]
+  satelite: [EWY, INDA, ILF, CCJ, ARES, MU, AVGO, SQM, UBER, MRVL]
+  especulativo: [OKLO, IONQ, CRWV, NBIS, CBRS, KTOS, RKLB, PONY, ASTS, RGTI,
+                 AMBA, BE, PURR, VCX, MP, URNM, OKTA, SOFI, HOOD, SYM]
+
+# ── POLÍTICA DE PROFIT TAKING ────────────────────────────────────────────────
+# Decisión de Matías: NO trims mecánicos. Al duplicar una especulativa, el
+# sistema genera alerta EVALUAR con contexto (momentum, distancia de ATH,
+# volumen, tesis) para decidir caso a caso: agregar más, mantener o recortar.
+profit_taking:
+  modo: "evaluar_con_contexto"
+  umbral_ganancia_pct: 100        # dispara EVALUAR cuando la posición duplica
+  # Guardrail automático: proteger utilidades cuando una ganadora se quiebra.
+  trailing_guardrail:
+    aplica_a: ["especulativo"]    # solo especulativas (las convicción se dejan correr)
+    min_ganancia_pct: 50          # solo posiciones con +50% o más
+    sigma_caida: 2.0              # caída > 2σ (vol diaria 60d escalada) desde máximo 20d
+    sugerencia: "Proteger utilidades: evaluar trim parcial o stop mental"
+
+# ── EVENTOS PROGRAMADOS (fechas conocidas que requieren acción) ──────────────
+eventos:
+  - { ticker: VCX, fecha: "2026-09-01", tipo: "lockup_expiry", dias_aviso: 21,
+      nota: "Lockup expira septiembre 2026. Premium 390% sobre NAV — VENDER antes o al vencimiento." }

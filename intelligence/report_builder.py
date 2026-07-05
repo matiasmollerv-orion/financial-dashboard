@@ -118,7 +118,11 @@ def load_raw_opportunity_alerts(max_alerts: int = 5) -> list:
     """Fallback: carga alertas crudas del opportunity_detector cuando no hay daily_brief AI."""
     sb = get_client()
     actionable_cats = [
-        "oportunidad_dip", "watchlist_entry", "watchlist_tier2", "accion_pendiente",
+        "oportunidad_dip", "oportunidad_rsi2", "watchlist_entry", "watchlist_tier2",
+        "accion_pendiente",
+        # Señales de venta (sell_engine)
+        "venta_concentracion", "venta_trailing", "venta_evaluar",
+        "evento_programado", "liquidez_emprendimiento",
     ]
     all_alerts = []
     for cat in actionable_cats:
@@ -145,10 +149,16 @@ def load_raw_opportunity_alerts(max_alerts: int = 5) -> list:
     result = []
     cat_to_tipo = {
         "oportunidad_dip": "COMPRAR",
+        "oportunidad_rsi2": "COMPRAR",
         "watchlist_entry": "COMPRAR",
         "watchlist_tier2": "MONITOREAR",
         "accion_pendiente": "RECORDATORIO",
         "momentum_warning": "MONITOREAR",
+        "venta_concentracion": "VENDER/TRIM",
+        "venta_trailing": "PROTEGER",
+        "venta_evaluar": "EVALUAR",
+        "evento_programado": "EVENTO",
+        "liquidez_emprendimiento": "REBALANCEAR",
     }
     for i, a in enumerate(all_alerts[:max_alerts], 1):
         metricas = a.get("metricas") or {}

@@ -63,13 +63,15 @@ extractors/
 intelligence/
   schema.sql          ← SQL para crear tablas market_news, market_intelligence, portfolio_alerts
   config/
+    investor_profile.yaml ← PERFIL: horizontes, límites de riesgo, liquidez emprendimiento, profit taking, eventos
     watchlist.yaml    ← Fuente de verdad: 25 recurrentes, watchlist tiers, entry targets, buckets, 13F, pendientes
-    rules.yaml        ← Reglas Connors DIP + filtros globales
+    rules.yaml        ← Reglas Connors DIP + z-score gating + RSI(2) + filtros globales
   news_fetcher.py     ← RSS → market_news (cartera + watchlist tickers + bucket keywords)
-  opportunity_detector.py ← v2: Connors rules + entry targets + Tier 2 triggers + acciones pendientes
-  ai_analyst.py       ← v2: Claude analiza noticias con contexto de watchlist/buckets
-  daily_brief.py      ← v2: Max 5 alertas accionables (JSON estructurado)
-  report_builder.py   ← v2: Email limpio con alert cards + portfolio compact
+  opportunity_detector.py ← v3: dips gateados por z-score de vol propia + RSI(2) Connors + entry targets + tier triggers
+  sell_engine.py      ← v1: SEÑALES DE VENTA — concentración >12%, trailing 2σ, EVALUAR al duplicar, eventos, liquidez
+  ai_analyst.py       ← v2: Claude analiza noticias (DESACTIVADO en workflow por costo API)
+  daily_brief.py      ← v2: Max 5 alertas accionables (DESACTIVADO en workflow por costo API)
+  report_builder.py   ← v2: Email limpio con alert cards + fallback a alertas crudas sin AI
   portfolio_health.py ← análisis independiente de cartera (concentración, drawdown, etc.)
 load_santander.py     ← carga PDFs Santander a Supabase
 load_racional_ventas.py ← carga ventas Racional
@@ -256,13 +258,22 @@ Pipeline diario: news_fetcher → ai_analyst → opportunity_detector → daily_
 - ETFs core que NUNCA alertan
 - Sincronizar con CONTEXT.md cuando cambie el plan
 
-### Flujo de alertas
+### Flujo de alertas (workflow activo — sin costo API)
 1. `news_fetcher`: busca noticias RSS para cartera + watchlist tickers + bucket keywords
-2. `ai_analyst`: Claude analiza cada noticia con contexto de cartera + watchlist + buckets. Identifica si crea oportunidad de watchlist.
-3. `opportunity_detector`: Connors DIP rules (chico/medio/grande/crash) + entry targets Tier 1 + triggers Tier 2 + acciones pendientes
-4. `daily_brief`: Claude consolida todo y genera MAX 5 alertas JSON con tipo/ticker/monto/urgencia
-5. `report_builder`: construye email limpio con alert cards
-6. `email_sender`: envia via Gmail SMTP
+2. `opportunity_detector`: dips gateados por z-score de volatilidad propia + RSI(2) Connors + entry targets Tier 1 + triggers Tier 2 + acciones pendientes
+3. `sell_engine`: concentración >12%, trailing 2σ en ganadoras especulativas, EVALUAR al duplicar, eventos programados (lockups), liquidez emprendimiento
+4. `report_builder`: construye email con alertas crudas (fallback sin AI brief)
+5. `email_sender`: envía via Gmail SMTP
+
+(`ai_analyst` y `daily_brief` existen pero están FUERA del workflow por costo API ~$54/mes)
+
+### investor_profile.yaml — Perfil del inversor (gobierna todas las alertas)
+- Emprendimiento: 20-30% del portafolio tocable en 1-2 años → debe estar en activos líquidos/estables
+- Límites: máx 12% por posición individual (ex ETFs core), máx 25% por bucket
+- Cash oportunístico: USD 500-1.000/mes además del DCA
+- Profit taking: modo "evaluar_con_contexto" (NO trims mecánicos) + trailing guardrail 2σ en especulativas
+- Clasificación de horizonte: core (20y) / conviccion (5-10y) / satelite (3-7y) / especulativo (2-5y)
+- Eventos programados con fecha (ej. lockup VCX sept 2026)
 
 ## Python
 - venv en `venv/` con Python 3.9 (pendiente migrar a 3.12)

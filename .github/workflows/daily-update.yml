@@ -88,6 +88,9 @@ jobs:
       - name: Detect opportunities (Connors + entry targets)
         run: python -m intelligence.opportunity_detector || echo "opportunity_detector" >> /tmp/failures.txt
 
+      - name: Sell signals (concentración, trailing, eventos, liquidez)
+        run: python -m intelligence.sell_engine || echo "sell_engine" >> /tmp/failures.txt
+
       - name: Build and send email report
         run: python -m intelligence.report_builder || echo "report_builder" >> /tmp/failures.txt
 

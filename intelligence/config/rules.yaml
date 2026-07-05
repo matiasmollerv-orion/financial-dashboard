@@ -49,6 +49,24 @@ dips:
     accion_max_usd: 2500
     descripcion: "Bajo -40% desde all-time-high. Solo si la tesis sigue viva. Compra event-driven grande."
 
+# =============================================================================
+# Z-SCORE GATING — normaliza los dips por la volatilidad PROPIA de cada ticker
+# Una caída -10% en IONQ (vol alta) es ruido; en UNH (vol baja) es un evento.
+# =============================================================================
+zscore:
+  min_z_with_threshold: -1.5   # el % fijo debe ser además ≥1.5σ del ticker
+  standalone_z: -2.5           # o un move ≥2.5σ solo (detecta eventos en tickers estables)
+  standalone_min_pct: -5.0     # piso mínimo de caída para la vía standalone
+
+# =============================================================================
+# MEAN REVERSION — RSI(2) de Connors (el indicador real del método)
+# =============================================================================
+mean_reversion:
+  rsi2_pullback:
+    rsi2_max: 10               # RSI(2) < 10 = sobreventa extrema de corto plazo
+    require_above_sma200: true # solo en tendencia alcista intacta
+    descripcion: "Pullback comprable de 1-3 días en tendencia larga."
+
 momentum:
   extreme_rally:
     window_days:       20
@@ -93,21 +111,6 @@ global_filters:
   # Histórico mínimo de yfinance para calcular reglas confiablemente
   min_price_history_days: 60
 
-# =============================================================================
-# WATCHLIST adicional (sin posición, pero monitorear)
-# Mantén en sintonía con CONTEXT.md sección 4
-# =============================================================================
-watchlist:
-  - UBER     # Tepper y Ackman compraron Q1
-  - COHR     # photonics
-  - LITE     # photonics
-  - GEV      # power
-  - VST      # power
-  - ETN      # power
-  - QCOM     # semis
-  - HOOD     # crypto-adjacent
-  - RDW      # space infra
-  - RXRX     # AI drug discovery
-  - SDGR     # AI drug discovery
-  - SYM      # robots
-  - CBRS     # Cerebras IPO
+# NOTA: la watchlist vive ÚNICAMENTE en watchlist.yaml (fuente de verdad).
+# La lista duplicada que existía aquí fue eliminada (2026-07-05) porque
+# estaba desincronizada y ningún código la leía.

@@ -34,9 +34,26 @@ from pathlib import Path
 from database.supabase_client import get_client
 
 
-USD_CLP = 901.76
 RULES_PATH = Path(__file__).parent / "config" / "rules.yaml"
 WATCHLIST_PATH = Path(__file__).parent / "config" / "watchlist.yaml"
+
+
+def get_usdclp() -> float:
+    """Tipo de cambio actual via yfinance (con fallback)."""
+    try:
+        import yfinance as yf
+        fx = yf.download("USDCLP=X", period="5d", interval="1d", progress=False)
+        if not fx.empty:
+            val = fx["Close"].squeeze()
+            if isinstance(val, pd.DataFrame):
+                val = val.iloc[:, 0]
+            return float(val.iloc[-1])
+    except Exception:
+        pass
+    return 901.76
+
+
+USD_CLP = get_usdclp()
 
 
 # ── LOADERS ─────────────────────────────────────────────────
@@ -68,7 +85,9 @@ def load_cartera() -> pd.DataFrame:
 
 def yf_ticker_for(ticker: str, mercado: str) -> str:
     if mercado == "nacional":
-        return f"{ticker}.SN"
+        # Strip _STG (Santander Corredora) para lookup válido en yfinance
+        base = ticker.replace("_STG", "") if ticker.endswith("_STG") else ticker
+        return f"{base}.SN"
     if mercado == "crypto":
         return f"{ticker}-USD"
     return ticker
@@ -134,6 +153,39 @@ def calc_metrics(close: pd.Series, volume: pd.Series) -> dict:
     else:
         m["volume_ratio"] = None
 
+    # ── Volatilidad propia + z-scores ────────────────────────
+    # Una caída de -10% en un ticker volátil (IONQ) es ruido normal;
+    # en uno estable (UNH) es un evento. El z-score normaliza por la
+    # volatilidad diaria de cada ticker escalada a la ventana.
+    rets = close.pct_change().dropna().tail(60)
+    if len(rets) >= 30:
+        vol_d = float(rets.std())
+        m["vol_diaria_pct"] = vol_d * 100
+        for window, key in [(5, "pct_5d"), (20, "pct_20d"), (60, "pct_60d")]:
+            pct = m.get(key)
+            sigma_w = vol_d * np.sqrt(window) * 100
+            m[f"z_{window}d"] = (pct / sigma_w) if (pct is not None and sigma_w > 0) else None
+    else:
+        m["vol_diaria_pct"] = None
+        m["z_5d"] = m["z_20d"] = m["z_60d"] = None
+
+    # ── RSI(2) — el indicador real de Connors ────────────────
+    # Mean-reversion: RSI(2) < 10 sobre SMA200 = pullback comprable
+    # en tendencia alcista. RSI(2) > 95 = sobreextendido.
+    if len(close) >= 10:
+        delta = close.diff().dropna().tail(30)
+        gain = delta.clip(lower=0)
+        loss = -delta.clip(upper=0)
+        avg_gain = gain.ewm(alpha=1/2, min_periods=2).mean().iloc[-1]
+        avg_loss = loss.ewm(alpha=1/2, min_periods=2).mean().iloc[-1]
+        if avg_loss > 0:
+            rs = avg_gain / avg_loss
+            m["rsi2"] = float(100 - 100 / (1 + rs))
+        else:
+            m["rsi2"] = 100.0
+    else:
+        m["rsi2"] = None
+
     return m
 
 
@@ -182,9 +234,29 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
             return "info" if base_sev == "media" else "media"
         return base_sev
 
-    # 1. DIP CHICO (-10% en 5d)
+    # ── Gating por z-score (volatilidad propia del ticker) ───
+    # Vía 1: cruza el % fijo Y el move es ≥ |z_gate|σ → filtra ruido en volátiles
+    # Vía 2: move ≥ |z_alone|σ aunque no cruce el % fijo → detecta eventos en estables
+    zcfg = rules.get("zscore", {})
+    z_gate = zcfg.get("min_z_with_threshold", -1.5)
+    z_alone = zcfg.get("standalone_z", -2.5)
+    z_alone_min_pct = zcfg.get("standalone_min_pct", -5.0)
+
+    def _dip_significativo(pct, z, threshold):
+        if pct is None:
+            return False
+        if pct <= threshold and (z is None or z <= z_gate):
+            return True
+        if z is not None and z <= z_alone and pct <= z_alone_min_pct:
+            return True
+        return False
+
+    def _z_note(z):
+        return f" ({abs(z):.1f}σ de su vol normal)" if z is not None else ""
+
+    # 1. DIP CHICO (-10% en 5d, ajustado por volatilidad)
     rule = dips.get("small_dip", {})
-    if m["pct_5d"] is not None and m["pct_5d"] <= rule.get("threshold_pct", -10):
+    if _dip_significativo(m["pct_5d"], m.get("z_5d"), rule.get("threshold_pct", -10)):
         ok = True
         if rule.get("require_above_sma200") and m["above_sma200"] is False:
             ok = False
@@ -197,16 +269,18 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
                 "severidad":  _severidad("media"),
                 "activo":     ticker,
                 "titulo":     f"DIP CHICO en {ticker}{ctx}",
-                "mensaje":    f"{ticker} cayo {m['pct_5d']:.1f}% en 5d. "
+                "mensaje":    f"{ticker} cayo {m['pct_5d']:.1f}% en 5d{_z_note(m.get('z_5d'))}. "
                               f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
                 "metricas":   {"pct_5d": round(m["pct_5d"], 2), "precio": m["precio_actual"],
+                               "z_5d": round(m["z_5d"], 2) if m.get("z_5d") else None,
+                               "rsi2": round(m["rsi2"], 1) if m.get("rsi2") is not None else None,
                                "bucket": bucket, "rule": "small_dip", "conviction": conviction},
                 "sugerencia": _sugerencia_dip("small_dip", rule),
             })
 
-    # 2. DIP MEDIO (-15% en 20d)
+    # 2. DIP MEDIO (-15% en 20d, ajustado por volatilidad)
     rule = dips.get("medium_dip", {})
-    if m["pct_20d"] is not None and m["pct_20d"] <= rule.get("threshold_pct", -15):
+    if _dip_significativo(m["pct_20d"], m.get("z_20d"), rule.get("threshold_pct", -15)):
         ok = True
         if rule.get("require_above_sma200") and m["above_sma200"] is False:
             ok = False
@@ -216,24 +290,27 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
                 "severidad":  _severidad("alta"),
                 "activo":     ticker,
                 "titulo":     f"DIP MEDIO en {ticker}{ctx}",
-                "mensaje":    f"{ticker} cayo {m['pct_20d']:.1f}% en 20d. "
+                "mensaje":    f"{ticker} cayo {m['pct_20d']:.1f}% en 20d{_z_note(m.get('z_20d'))}. "
                               f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
                 "metricas":   {"pct_20d": round(m["pct_20d"], 2), "precio": m["precio_actual"],
+                               "z_20d": round(m["z_20d"], 2) if m.get("z_20d") else None,
+                               "rsi2": round(m["rsi2"], 1) if m.get("rsi2") is not None else None,
                                "bucket": bucket, "rule": "medium_dip", "conviction": conviction},
                 "sugerencia": _sugerencia_dip("medium_dip", rule),
             })
 
-    # 3. DIP GRANDE (-25% en 60d)
+    # 3. DIP GRANDE (-25% en 60d, ajustado por volatilidad)
     rule = dips.get("large_dip", {})
-    if m["pct_60d"] is not None and m["pct_60d"] <= rule.get("threshold_pct", -25):
+    if _dip_significativo(m["pct_60d"], m.get("z_60d"), rule.get("threshold_pct", -25)):
         alerts.append({
             "categoria":  "oportunidad_dip",
             "severidad":  _severidad("alta"),
             "activo":     ticker,
             "titulo":     f"DIP GRANDE en {ticker}{ctx}",
-            "mensaje":    f"{ticker} cayo {m['pct_60d']:.1f}% en 60d. "
+            "mensaje":    f"{ticker} cayo {m['pct_60d']:.1f}% en 60d{_z_note(m.get('z_60d'))}. "
                           f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
             "metricas":   {"pct_60d": round(m["pct_60d"], 2), "precio": m["precio_actual"],
+                           "z_60d": round(m["z_60d"], 2) if m.get("z_60d") else None,
                            "bucket": bucket, "rule": "large_dip", "conviction": conviction},
             "sugerencia": _sugerencia_dip("large_dip", rule),
         })
@@ -265,8 +342,35 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
             "mensaje":    f"{ticker} subio +{m['pct_20d']:.1f}% en 20d. "
                           f"Precio: USD {m['precio_actual']:.2f}.",
             "metricas":   {"pct_20d": round(m["pct_20d"], 2), "precio": m["precio_actual"],
+                           "rsi2": round(m["rsi2"], 1) if m.get("rsi2") is not None else None,
                            "bucket": bucket, "rule": "extreme_rally", "conviction": conviction},
             "sugerencia": "NO comprar. Evaluar trim parcial 25-30%.",
+        })
+
+    # 6. CONNORS RSI(2) — pullback comprable en tendencia alcista
+    # El setup clásico de Connors: RSI(2) < 10 con precio sobre SMA200.
+    # Mean-reversion de corto plazo en tendencia larga intacta.
+    mr = rules.get("mean_reversion", {}).get("rsi2_pullback", {})
+    rsi2 = m.get("rsi2")
+    rsi2_max = mr.get("rsi2_max", 10)
+    if (rsi2 is not None and rsi2 < rsi2_max
+            and m.get("above_sma200")
+            and conviction in ("cartera", "recurrente", "tier1", "tier2")):
+        sug = (f"Pullback comprable: agregar en la ventana de 1-3 días."
+               if is_actionable else "Evaluar entry oportunístico.")
+        alerts.append({
+            "categoria":  "oportunidad_rsi2",
+            "severidad":  _severidad("media"),
+            "activo":     ticker,
+            "titulo":     f"RSI(2) PULLBACK en {ticker}{ctx}",
+            "mensaje":    f"{ticker} con RSI(2) = {rsi2:.0f} sobre SMA200 "
+                          f"(setup Connors: sobreventa extrema de corto plazo en "
+                          f"tendencia alcista intacta). "
+                          f"Precio: USD {m['precio_actual']:.2f}.{tesis_note}",
+            "metricas":   {"rsi2": round(rsi2, 1), "precio": m["precio_actual"],
+                           "sma200": round(m["sma200"], 2) if m.get("sma200") else None,
+                           "bucket": bucket, "rule": "rsi2_pullback", "conviction": conviction},
+            "sugerencia": sug,
         })
 
     return alerts
