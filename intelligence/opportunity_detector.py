@@ -146,6 +146,9 @@ def calc_metrics(close: pd.Series, volume: pd.Series) -> dict:
         m["sma200"] = None
         m["above_sma200"] = None
 
+    m["sma50"] = float(close.tail(50).mean()) if len(close) >= 50 else None
+    m["low_60d"] = float(close.tail(60).min()) if len(close) >= 30 else None
+
     if volume is not None and len(volume.dropna()) >= 60:
         vol_recent = float(volume.tail(5).mean())
         vol_avg    = float(volume.tail(60).mean())
@@ -511,6 +514,116 @@ def check_pending_actions(watchlist_cfg: dict, metrics_map: dict) -> list:
     return alerts
 
 
+# ── SCORE COMPUESTO ─────────────────────────────────────────
+def fetch_cross_signals() -> tuple:
+    """Señales informacionales recientes para cruzar con las técnicas.
+    → (insider_tickers: set, mention_counts: dict ticker→n)"""
+    sb = get_client()
+    insider_tickers = set()
+    mention_counts = {}
+    cutoff_ins = (date.today() - timedelta(days=14)).isoformat()
+    cutoff_news = (date.today() - timedelta(days=7)).isoformat()
+    try:
+        r = (sb.table("portfolio_alerts").select("activo,categoria")
+             .in_("categoria", ["insider_buy", "insider_cluster", "smart_money_13f"])
+             .gte("fecha_alerta", cutoff_ins).execute())
+        insider_tickers = {row["activo"] for row in r.data}
+    except Exception:
+        pass
+    try:
+        r = (sb.table("market_news").select("tickers_mencionados,relevancia_preliminar")
+             .gte("fecha_noticia", cutoff_news)
+             .gte("relevancia_preliminar", 40).execute())
+        for row in r.data:
+            for tk in (row.get("tickers_mencionados") or []):
+                mention_counts[tk] = mention_counts.get(tk, 0) + 1
+    except Exception:
+        pass
+    return insider_tickers, mention_counts
+
+
+def compute_scores(alerts: list, insider_tickers: set, mention_counts: dict):
+    """Score 0-100 por alerta: técnica × informacional × convicción.
+    Se guarda en metricas.score y define el orden del reporte."""
+    sev_base = {"critica": 40, "alta": 30, "media": 20, "baja": 12, "info": 8}
+    conv_bonus = {"recurrente": 10, "tier1": 10, "cartera": 8, "tier2": 5, "tier3": 0}
+
+    for a in alerts:
+        m = a.get("metricas") or {}
+        score = sev_base.get(a.get("severidad", "info"), 8)
+
+        # Magnitud técnica: z-score del move
+        z = None
+        for k in ("z_5d", "z_20d", "z_60d"):
+            if m.get(k) is not None:
+                z = m[k] if z is None else min(z, m[k])
+        if z is not None:
+            score += min(15, abs(z) * 5)
+
+        # RSI(2) extremo
+        rsi2 = m.get("rsi2")
+        if rsi2 is not None:
+            if rsi2 < 5:
+                score += 10
+            elif rsi2 < 10:
+                score += 5
+
+        # Convicción
+        score += conv_bonus.get(m.get("conviction", ""), 0)
+
+        # Cross-signal informacional: insiders/13F comprando el mismo ticker
+        tk = a.get("activo", "")
+        if tk in insider_tickers and a["categoria"].startswith(("oportunidad", "watchlist")):
+            score += 15
+            a["mensaje"] = a.get("mensaje", "") + " ⚡ Cross-signal: insiders/smart money compraron recientemente."
+        # Mención en newsletters curadas / noticias relevantes
+        if mention_counts.get(tk, 0) >= 1 and a["categoria"].startswith(("oportunidad", "watchlist")):
+            score += min(10, 5 * mention_counts[tk])
+
+        m["score"] = int(min(100, score))
+        a["metricas"] = m
+
+
+# ── ENTRY TARGETS DINÁMICOS ─────────────────────────────────
+def check_target_drift(watchlist_cfg: dict, metrics_map: dict) -> list:
+    """Los entry targets fijados a mano envejecen. Sugiere recalibración
+    cuando la banda técnica actual (soporte 60d ↔ SMA50) se alejó >12%
+    del target del YAML. Corre solo los lunes para no spamear."""
+    alerts = []
+    for item in watchlist_cfg.get("watchlist", {}).get("tier1", []):
+        tk = item.get("ticker")
+        entry = item.get("entry_usd")
+        m = metrics_map.get(tk)
+        if not tk or not entry or not m:
+            continue
+        sma50 = m.get("sma50")
+        low60 = m.get("low_60d")
+        if not sma50 or not low60:
+            continue
+        sug_low = round(max(low60, sma50 * 0.85), 2)
+        sug_high = round(sma50, 2)
+        yaml_mid = (entry[0] + entry[1]) / 2
+        sug_mid = (sug_low + sug_high) / 2
+        drift_pct = (sug_mid / yaml_mid - 1) * 100
+        if abs(drift_pct) > 12:
+            alerts.append({
+                "categoria":  "target_recalibrar",
+                "severidad":  "info",
+                "activo":     tk,
+                "titulo":     f"RECALIBRAR TARGET: {tk} ({drift_pct:+.0f}% de drift)",
+                "mensaje":    f"El entry target de {tk} en watchlist.yaml "
+                              f"(USD {entry[0]}-{entry[1]}) quedó {abs(drift_pct):.0f}% "
+                              f"{'bajo' if drift_pct > 0 else 'sobre'} la banda técnica actual "
+                              f"(soporte 60d ↔ SMA50 = USD {sug_low}-{sug_high}). "
+                              f"Precio actual: USD {m['precio_actual']:.2f}.",
+                "metricas":   {"target_yaml": entry, "target_sugerido": [sug_low, sug_high],
+                               "drift_pct": round(drift_pct, 1), "precio": m["precio_actual"]},
+                "sugerencia": f"Actualizar entry_usd de {tk} a ~[{sug_low}, {sug_high}] en "
+                              f"watchlist.yaml si la tesis sigue igual.",
+            })
+    return alerts
+
+
 # ── SAVE ────────────────────────────────────────────────────
 def save_alerts(alerts: list) -> dict:
     if not alerts:
@@ -562,6 +675,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--dry-run", action="store_true", help="No escribe a Supabase")
     parser.add_argument("--ticker", default=None, help="Solo un ticker especifico")
+    parser.add_argument("--targets", action="store_true",
+                        help="Forzar chequeo de target drift (normal: solo lunes)")
     args = parser.parse_args()
 
     print("=" * 60)
@@ -728,9 +843,24 @@ def main():
     all_alerts.extend(pending_alerts)
     print(f"  {len(pending_alerts)} recordatorios")
 
-    # ── Sort by priority ─────────────────────────────────────
-    sev_order = {"critica": 0, "alta": 1, "media": 2, "baja": 3, "info": 4}
-    all_alerts.sort(key=lambda a: sev_order.get(a.get("severidad", "info"), 99))
+    # 5. Entry target drift (solo lunes, targets manuales envejecen)
+    if date.today().weekday() == 0 or args.targets:
+        print("Target drift check (tier 1)...")
+        drift_alerts = check_target_drift(wl_cfg, metrics_map)
+        all_alerts.extend(drift_alerts)
+        print(f"  {len(drift_alerts)} targets a recalibrar")
+
+    # ── Score compuesto: técnica × informacional × convicción ─
+    print("Score compuesto (cross-signals: insiders + newsletters)...")
+    insider_tks, mentions = fetch_cross_signals()
+    compute_scores(all_alerts, insider_tks, mentions)
+
+    # ── Sort by score, cap para no spamear ──────────────────
+    all_alerts.sort(key=lambda a: -(a.get("metricas", {}).get("score", 0)))
+    max_alerts = gf.get("max_alerts_per_run", 15)
+    if len(all_alerts) > max_alerts:
+        print(f"  Cap: {len(all_alerts)} → top {max_alerts} por score")
+        all_alerts = all_alerts[:max_alerts]
 
     print(f"\nTotal alertas: {len(all_alerts)}")
     if all_alerts:
@@ -741,8 +871,9 @@ def main():
 
     if args.dry_run:
         print("\nDRY RUN — no se guardo nada")
-        for a in all_alerts[:10]:
-            print(f"  [{a['severidad'].upper():8s}] {a['titulo']}")
+        for a in all_alerts[:15]:
+            score = a.get("metricas", {}).get("score", 0)
+            print(f"  [{score:>3d}] [{a['severidad'].upper():8s}] {a['titulo']}")
         return
 
     result = save_alerts(all_alerts)

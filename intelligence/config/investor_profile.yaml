@@ -64,12 +64,21 @@ horizontes:
 
 # Clasificación explícita de tickers a bucket de horizonte
 # (los no listados: el sistema infiere por watchlist.yaml o asume "satelite")
+#
+# Criterios (consenso Lynch / core-satellite / calidad institucional):
+#   conviccion:   GAAP rentable 3+ años, FCF positivo, líder con moat, >USD 50B,
+#                 la valuación se sostiene con utilidades ACTUALES
+#   satelite:     rentable pero cíclica/temática, o ETF sectorial/país
+#   especulativo: pre-revenue o pérdidas GAAP, IPO <2 años, outcome binario,
+#                 la valuación se sostiene con narrativa de TAM futuro
 clasificacion:
   core: [VTI, VOO, VT, VXUS, VWO, VTV, BND, BNDX, IEF, VGSH, VTIP, SCHP, GLDM]
-  conviccion: [NU, MELI, NVDA, TSM, ASML, MSFT, GOOGL, AMZN, LLY, UNH]
-  satelite: [EWY, INDA, ILF, CCJ, ARES, MU, AVGO, SQM, UBER, MRVL]
+  conviccion: [NU, MELI, NVDA, TSM, ASML, MSFT, GOOGL, AMZN, LLY, UNH,
+               AVGO, UBER, AMD, PANW, BCI]
+  satelite: [EWY, INDA, ILF, EWJ, FTEC, CCJ, ARES, MU, SQM, MRVL, LSCC,
+             HOOD, SOFI, URNM, QCOM, COHR, GEV, VST]
   especulativo: [OKLO, IONQ, CRWV, NBIS, CBRS, KTOS, RKLB, PONY, ASTS, RGTI,
-                 AMBA, BE, PURR, VCX, MP, URNM, OKTA, SOFI, HOOD, SYM]
+                 AMBA, BE, PURR, VCX, MP, SYM, RDW, RXRX, SDGR, AVAV, LITE, AAOI]
 
 # ── POLÍTICA DE PROFIT TAKING ────────────────────────────────────────────────
 # Decisión de Matías: NO trims mecánicos. Al duplicar una especulativa, el

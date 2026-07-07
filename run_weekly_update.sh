@@ -38,5 +38,12 @@ if [ -f "load_buda.py" ]; then
     "$VENV" load_buda.py >> "$LOG_FILE" 2>&1
 fi
 
+# 5. GBrain bridge (SOLO local — el brain vive en este Mac)
+#    newsletters del brain → market_news + alertas del día → brain
+if [ -f "intelligence/gbrain_bridge.py" ]; then
+    echo "--- GBrain bridge ---" >> "$LOG_FILE"
+    "$VENV" -m intelligence.gbrain_bridge --days 2 >> "$LOG_FILE" 2>&1
+fi
+
 echo "$(date '+%Y-%m-%d %H:%M:%S') — Actualización completada" >> "$LOG_FILE"
 echo "" >> "$LOG_FILE"

@@ -67,8 +67,13 @@ intelligence/
     watchlist.yaml    ← Fuente de verdad: 25 recurrentes, watchlist tiers, entry targets, buckets, 13F, pendientes
     rules.yaml        ← Reglas Connors DIP + z-score gating + RSI(2) + filtros globales
   news_fetcher.py     ← RSS → market_news (cartera + watchlist tickers + bucket keywords)
-  opportunity_detector.py ← v3: dips gateados por z-score de vol propia + RSI(2) Connors + entry targets + tier triggers
+  opportunity_detector.py ← v3: dips z-score + RSI(2) + entry targets + score compuesto 0-100 + target drift (lunes)
   sell_engine.py      ← v1: SEÑALES DE VENTA — concentración >12%, trailing 2σ, EVALUAR al duplicar, eventos, liquidez
+  edgar_monitor.py    ← v1: SEC EDGAR — Form 4 insider buys/clusters, 8-K materiales, 13F smart money diff
+  earnings_radar.py   ← v1: aviso 5 días ANTES de earnings de posiciones grandes + tier1
+  alert_outcomes.py   ← v1: feedback loop — retorno forward +5/20/60d en metricas de cada alerta; --scorecard
+  gbrain_bridge.py    ← v1: SOLO LOCAL (LaunchAgent) — newsletters GBrain → market_news; alertas → brain
+  backtest_rules.py   ← v1: backtest ad-hoc de reglas dip/RSI2 vs baseline (NO en workflow)
   ai_analyst.py       ← v2: Claude analiza noticias (DESACTIVADO en workflow por costo API)
   daily_brief.py      ← v2: Max 5 alertas accionables (DESACTIVADO en workflow por costo API)
   report_builder.py   ← v2: Email limpio con alert cards + fallback a alertas crudas sin AI
@@ -259,13 +264,24 @@ Pipeline diario: news_fetcher → ai_analyst → opportunity_detector → daily_
 - Sincronizar con CONTEXT.md cuando cambie el plan
 
 ### Flujo de alertas (workflow activo — sin costo API)
-1. `news_fetcher`: busca noticias RSS para cartera + watchlist tickers + bucket keywords
-2. `opportunity_detector`: dips gateados por z-score de volatilidad propia + RSI(2) Connors + entry targets Tier 1 + triggers Tier 2 + acciones pendientes
-3. `sell_engine`: concentración >12%, trailing 2σ en ganadoras especulativas, EVALUAR al duplicar, eventos programados (lockups), liquidez emprendimiento
-4. `report_builder`: construye email con alertas crudas (fallback sin AI brief)
-5. `email_sender`: envía via Gmail SMTP
+1. `news_fetcher`: noticias RSS para cartera + watchlist + bucket keywords
+2. `opportunity_detector`: dips z-score + RSI(2) + entry targets + tier triggers + score compuesto (técnica × informacional × convicción), cap top 15
+3. `sell_engine`: concentración >12%, trailing 2σ, EVALUAR al duplicar, eventos (lockups), liquidez emprendimiento
+4. `edgar_monitor`: Form 4 insider buys/clusters + 8-K materiales + 13F smart money (detección temprana pre-precio)
+5. `earnings_radar`: aviso 5 días antes de earnings
+6. `alert_outcomes`: registra retornos forward de cada alerta (feedback loop; `--scorecard` para calibración)
+7. `report_builder` + `email_sender`: email diario
+
+LOCAL (LaunchAgent 7am, run_weekly_update.sh): `gbrain_bridge` — newsletters del brain → market_news (alimenta el score compuesto) y alertas activas → página finanzas/alertas-sistema del brain.
 
 (`ai_analyst` y `daily_brief` existen pero están FUERA del workflow por costo API ~$54/mes)
+
+### Backtest (validación con datos reales, jul 2026, universo propio 2y)
+- medium_dip: +25.8% a 20d vs +5.2% baseline (75% hit) — regla más valiosa, rara
+- large_dip: +11.0% a 20d — rara y valiosa
+- small_dip: edge de corto plazo (+4.6% a 5d), se diluye a 20d
+- rsi2: 199 señales, 64% hit, edge modesto consistente
+- Correr `python -m intelligence.backtest_rules` tras cambiar umbrales
 
 ### investor_profile.yaml — Perfil del inversor (gobierna todas las alertas)
 - Emprendimiento: 20-30% del portafolio tocable en 1-2 años → debe estar en activos líquidos/estables

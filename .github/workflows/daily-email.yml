@@ -38,40 +38,13 @@ jobs:
           echo "GMAIL_USER=${{ secrets.GMAIL_USER }}" >> .env
           echo "GMAIL_APP_PASSWORD=${{ secrets.GMAIL_APP_PASSWORD }}" >> .env
           echo "RECIPIENT_EMAIL=${{ secrets.RECIPIENT_EMAIL }}" >> .env
-          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
 
-      # 1. Recolectar noticias frescas (últimas 24h)
-      - name: Fetch news RSS
-        run: python -m intelligence.news_fetcher --hours 24
-        continue-on-error: true
+      # ⚠️ NOTA (2026-07-05): ai_analyst (--limit 40) y daily_brief ELIMINADOS.
+      # Quemaban créditos API a diario. Las señales las genera daily-update.yml
+      # (detector + sell_engine + EDGAR + earnings, todo gratis) 30 min antes.
+      # Este workflow SOLO envía el email con las alertas ya calculadas.
 
-      # 2. Recalcular alertas de cartera (concentración, drawdown, P/E, etc.)
-      - name: Portfolio health check
-        run: python -m intelligence.portfolio_health
-        continue-on-error: true
-
-      # 2b. Detectar oportunidades (DIPs, MOMENTUM, NEAR ATH)
-      - name: Opportunity detector
-        run: python -m intelligence.opportunity_detector
-        continue-on-error: true
-
-      # 3. Analizar noticias con Claude AI (solo si hay key)
-      - name: AI news analysis
-        if: ${{ env.ANTHROPIC_API_KEY != '' }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python -m intelligence.ai_analyst --limit 40
-        continue-on-error: true
-
-      # 4. Generar Daily Brief ejecutivo
-      - name: Daily Brief AI
-        if: ${{ env.ANTHROPIC_API_KEY != '' }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python -m intelligence.daily_brief
-        continue-on-error: true
-
-      # 5. Enviar email con todo
+      # Enviar email con las alertas del pipeline diario
       - name: Send daily email
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then

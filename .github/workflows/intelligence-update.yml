@@ -30,9 +30,8 @@ jobs:
         run: |
           echo "SUPABASE_URL=${{ secrets.SUPABASE_URL }}" >> .env
           echo "SUPABASE_KEY=${{ secrets.SUPABASE_KEY }}" >> .env
-          echo "ANTHROPIC_API_KEY=${{ secrets.ANTHROPIC_API_KEY }}" >> .env
 
-      # 1. Recolectar noticias de RSS (no necesita API key)
+      # 1. Recolectar noticias de RSS (gratis, sin API)
       - name: Fetch news
         run: python -m intelligence.news_fetcher --hours 6
         continue-on-error: true
@@ -42,21 +41,11 @@ jobs:
         run: python -m intelligence.portfolio_health
         continue-on-error: true
 
-      # 3. Analizar noticias pendientes con Claude (solo si hay API key)
-      - name: AI analysis
-        if: ${{ env.ANTHROPIC_API_KEY != '' }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python -m intelligence.ai_analyst --limit 30
-        continue-on-error: true
-
-      # 4. Generar Daily Brief (1 vez al día, ejecuta solo en cron de 11 UTC = 8am Chile)
-      - name: Daily Brief
-        if: ${{ env.ANTHROPIC_API_KEY != '' && github.event.schedule == '0 11 * * *' }}
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: python -m intelligence.daily_brief
-        continue-on-error: true
+      # ⚠️ NOTA (2026-07-05): ai_analyst y daily_brief ELIMINADOS de aquí.
+      # Corrían cada 2 horas × 30 noticias = ~$2/día en API Anthropic.
+      # El análisis ahora es 100% sin API: reglas z-score + RSI(2) + EDGAR
+      # (insiders/13F) + newsletters de GBrain. NO volver a agregar llamadas
+      # AI a workflows con cron sin consultar el costo diario primero.
 
       - name: Summary
         if: always()

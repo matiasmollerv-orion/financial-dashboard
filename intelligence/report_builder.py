@@ -123,6 +123,9 @@ def load_raw_opportunity_alerts(max_alerts: int = 5) -> list:
         # Señales de venta (sell_engine)
         "venta_concentracion", "venta_trailing", "venta_evaluar",
         "evento_programado", "liquidez_emprendimiento",
+        # Señales informacionales (edgar_monitor + earnings_radar)
+        "insider_cluster", "insider_buy", "smart_money_13f", "sec_8k",
+        "earnings_proximos", "target_recalibrar",
     ]
     all_alerts = []
     for cat in actionable_cats:
@@ -159,6 +162,12 @@ def load_raw_opportunity_alerts(max_alerts: int = 5) -> list:
         "venta_evaluar": "EVALUAR",
         "evento_programado": "EVENTO",
         "liquidez_emprendimiento": "REBALANCEAR",
+        "insider_cluster": "SEÑAL INSIDER",
+        "insider_buy": "SEÑAL INSIDER",
+        "smart_money_13f": "SMART MONEY",
+        "sec_8k": "EVENTO SEC",
+        "earnings_proximos": "EARNINGS",
+        "target_recalibrar": "RECALIBRAR",
     }
     for i, a in enumerate(all_alerts[:max_alerts], 1):
         metricas = a.get("metricas") or {}

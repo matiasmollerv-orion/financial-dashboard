@@ -91,8 +91,17 @@ jobs:
       - name: Sell signals (concentración, trailing, eventos, liquidez)
         run: python -m intelligence.sell_engine || echo "sell_engine" >> /tmp/failures.txt
 
-      - name: Build and send email report
-        run: python -m intelligence.report_builder || echo "report_builder" >> /tmp/failures.txt
+      - name: EDGAR monitor (insiders + 8-K + smart money 13F)
+        run: python -m intelligence.edgar_monitor || echo "edgar_monitor" >> /tmp/failures.txt
+
+      - name: Earnings radar (aviso previo de resultados)
+        run: python -m intelligence.earnings_radar || echo "earnings_radar" >> /tmp/failures.txt
+
+      - name: Alert outcomes (feedback loop)
+        run: python -m intelligence.alert_outcomes || echo "alert_outcomes" >> /tmp/failures.txt
+
+      # El email lo envía daily-email.yml a las 8:30 (30 min después de este
+      # pipeline) — no duplicar el envío aquí.
 
       - name: Summary + Health flag
         if: always()
