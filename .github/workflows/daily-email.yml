@@ -45,10 +45,11 @@ jobs:
       # Este workflow SOLO envía el email con las alertas ya calculadas.
 
       # Enviar email con las alertas del pipeline diario
+      # (envuelto en pipeline_stats para registrar si el envío fue OK)
       - name: Send daily email
         run: |
           if [ "${{ inputs.dry_run }}" = "true" ]; then
             python -m intelligence.report_builder --dry-run
           else
-            python -m intelligence.report_builder
+            python -m intelligence.pipeline_stats --script daily_email -- python -m intelligence.report_builder
           fi

@@ -440,6 +440,39 @@ def build_resumen_ejecutivo() -> str:
         f"{len(rows)} señales activas de baja prioridad. Nada urgente hoy."
 
 
+# ── SALUD DEL PIPELINE (🩺) ─────────────────────────────────
+@_safe_query
+def build_health_html() -> str:
+    """Sección 🩺 del email: SOLO aparece si hay anomalías del pipeline
+    (alertas categoria=pipeline_health que publica health_check)."""
+    sb = get_client()
+    r = (sb.table("portfolio_alerts").select("activo,titulo,mensaje,severidad")
+         .eq("activo_alerta", True).eq("categoria", "pipeline_health")
+         .limit(15).execute())
+    anomalias = r.data or []
+    if not anomalias:
+        return ""  # todo sano → nada (menos ruido)
+
+    filas = ""
+    for a in anomalias:
+        color = "#e74c3c" if a.get("severidad") == "alta" else "#f39c12"
+        filas += (f'<div style="padding:6px 0; border-bottom:1px solid {COLORS["border"]}; '
+                  f'color:{COLORS["text"]}; font-size:13px;">'
+                  f'<span style="color:{color}; font-weight:bold;">●</span> '
+                  f'{a.get("mensaje", a.get("titulo", "?"))}</div>')
+    return f"""
+        <div style="margin-top:18px; padding:12px 16px; background:{COLORS['card']};
+                    border-radius:8px; border-left:3px solid #e74c3c;">
+          <div style="color:{COLORS['text_dim']}; font-size:12px; text-transform:uppercase;
+                      letter-spacing:1px; margin-bottom:6px;">🩺 Salud del pipeline
+                      ({len(anomalias)} anomalías)</div>
+          {filas}
+          <div style="color:{COLORS['text_dim']}; font-size:11px; margin-top:6px;">
+            Detectado comparando cada script contra su propio historial (~4 semanas).
+          </div>
+        </div>"""
+
+
 # ── BUILD PRINCIPAL ─────────────────────────────────────────
 def build_daily_report() -> tuple:
     """
@@ -525,6 +558,9 @@ def build_daily_report() -> tuple:
 
         <!-- Noise -->
         {ruido_html}
+
+        <!-- Pipeline health (solo si hay anomalías) -->
+        {build_health_html() or ''}
 
         <!-- Portfolio compact -->
         {_build_portfolio_compact(snap)}

@@ -274,6 +274,28 @@ Pipeline diario: news_fetcher → ai_analyst → opportunity_detector → daily_
 
 LOCAL (LaunchAgent 7am, run_weekly_update.sh): `gbrain_bridge` — newsletters del brain → market_news (alimenta el score compuesto) y alertas activas → página finanzas/alertas-sistema del brain.
 
+### 🩺 Auto-auditoría del pipeline (detecta fallas silenciosas)
+- Tabla `pipeline_stats`: cada paso del workflow va envuelto en
+  `python -m intelligence.pipeline_stats --script X --table Y -- <comando>`
+  → registra filas nuevas (delta count=exact, inmune al límite 1000), duración, exit_ok.
+  El wrapper PROPAGA el exit code (failure tracker sigue funcionando).
+- `health_check.py` (workflow health-check.yml 9:30am) compara cada script contra
+  su PROPIO historial (~4 semanas): exit_ok=false, cadencia autoderivada (0 filas
+  en >3× su intervalo histórico), caída >60% vs promedio, tabla estancada.
+  Mínimo 4 registros antes de alertar (sin falsos positivos la primera semana).
+- Anomalías → portfolio_alerts categoria=pipeline_health → sección 🩺 del email
+  diario (solo aparece si hay problemas).
+- DDL: migración en supabase/migrations/ aplicada via `supabase db push` (CLI linkeado).
+- Antecedente: el bug de paginación Supabase (solo 1000 filas) estuvo meses invisible
+  porque nada comparaba lo cargado contra lo esperado.
+
+### ⚠️ Deduplicación email vs PDF DriveWealth (bug conocido)
+Los trades pueden llegar por DOS fuentes: email "Invertiste en" (trade completo) y
+PDF DriveWealth (fills partidos, ej 1.024125 → 1.0 + 0.024125). La dedupe por
+(fecha, ticker, monto) NO los matchea → posiciones infladas. El snapshot mensual
+desde cartolas oficiales LIMPIA esta contaminación (por eso es crítico hacerlo
+cada cierre de mes). En junio 2026 infló AVGO +2.03, MRVL +1.73, NU +6.49, NVDA +0.39.
+
 (`ai_analyst` y `daily_brief` existen pero están FUERA del workflow por costo API ~$54/mes)
 
 ### Backtest (validación con datos reales, jul 2026, universo propio 2y)

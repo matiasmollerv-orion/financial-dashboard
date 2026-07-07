@@ -37,68 +37,55 @@ jobs:
       - name: Init failure tracker
         run: echo "" > /tmp/failures.txt
 
+      # Cada paso va envuelto en pipeline_stats (auto-auditoría): mide filas
+      # nuevas, duración y exit_ok SIN tocar la lógica del loader. El wrapper
+      # propaga el exit code, así el failure tracker sigue funcionando.
       - name: Run Santander update (gastos + cuenta corriente)
         id: santander
-        run: python load_santander.py --days 14 || echo "santander" >> /tmp/failures.txt
+        run: python -m intelligence.pipeline_stats --script load_santander --table santander_gastos -- python load_santander.py --days 14 || echo "santander" >> /tmp/failures.txt
 
       - name: Run Racional ventas update
         id: ventas
-        run: python load_racional_ventas.py --days 14 || echo "racional_ventas" >> /tmp/failures.txt
+        run: python -m intelligence.pipeline_stats --script load_racional_ventas --table racional_transacciones -- python load_racional_ventas.py --days 14 || echo "racional_ventas" >> /tmp/failures.txt
 
       - name: Run Racional compras update
         id: compras
-        run: |
-          if [ -f load_racional.py ]; then
-            python load_racional.py --days 14 || echo "racional_compras" >> /tmp/failures.txt
-          fi
+        run: python -m intelligence.pipeline_stats --script load_racional --table racional_transacciones -- python load_racional.py --days 14 || echo "racional_compras" >> /tmp/failures.txt
 
       - name: Run Racional PDF transactions update
         id: racional_pdf
-        run: |
-          if [ -f load_racional_pdf.py ]; then
-            python load_racional_pdf.py --days 14 || echo "racional_pdf" >> /tmp/failures.txt
-          fi
+        run: python -m intelligence.pipeline_stats --script load_racional_pdf --table racional_transacciones -- python load_racional_pdf.py --days 14 || echo "racional_pdf" >> /tmp/failures.txt
 
       - name: Run Buda crypto update
         id: buda
-        run: |
-          if [ -f load_buda.py ]; then
-            python load_buda.py --days 14 || echo "buda" >> /tmp/failures.txt
-          fi
+        run: python -m intelligence.pipeline_stats --script load_buda --table buda_crypto -- python load_buda.py --days 14 || echo "buda" >> /tmp/failures.txt
 
       - name: Reconcile iPhone notifications with PDF
-        run: |
-          if [ -f intelligence/reconcile_notifications.py ]; then
-            python -m intelligence.reconcile_notifications || true
-          fi
+        run: python -m intelligence.pipeline_stats --script reconcile_notifications -- python -m intelligence.reconcile_notifications || true
 
       - name: Update cartera_actual (CRÍTICO)
         id: cartera
-        run: |
-          if [ -f update_cartera.py ]; then
-            python update_cartera.py || echo "cartera" >> /tmp/failures.txt
-          fi
+        run: python -m intelligence.pipeline_stats --script update_cartera --table cartera_actual -- python update_cartera.py || echo "cartera" >> /tmp/failures.txt
 
       # ── Intelligence Pipeline (después de cartera actualizada) ──
-      # Solo opportunity_detector (reglas Connors + entry targets, sin API)
-      # ai_analyst y daily_brief desactivados para no gastar créditos Anthropic (~$1.80/día)
+      # Sin API Anthropic: reglas + EDGAR + newsletters GBrain. Todo gratis.
       - name: Fetch market news (RSS)
-        run: python -m intelligence.news_fetcher --hours 26 || echo "news_fetcher" >> /tmp/failures.txt
+        run: python -m intelligence.pipeline_stats --script news_fetcher --table market_news -- python -m intelligence.news_fetcher --hours 26 || echo "news_fetcher" >> /tmp/failures.txt
 
       - name: Detect opportunities (Connors + entry targets)
-        run: python -m intelligence.opportunity_detector || echo "opportunity_detector" >> /tmp/failures.txt
+        run: python -m intelligence.pipeline_stats --script opportunity_detector --table portfolio_alerts -- python -m intelligence.opportunity_detector || echo "opportunity_detector" >> /tmp/failures.txt
 
       - name: Sell signals (concentración, trailing, eventos, liquidez)
-        run: python -m intelligence.sell_engine || echo "sell_engine" >> /tmp/failures.txt
+        run: python -m intelligence.pipeline_stats --script sell_engine --table portfolio_alerts -- python -m intelligence.sell_engine || echo "sell_engine" >> /tmp/failures.txt
 
       - name: EDGAR monitor (insiders + 8-K + smart money 13F)
-        run: python -m intelligence.edgar_monitor || echo "edgar_monitor" >> /tmp/failures.txt
+        run: python -m intelligence.pipeline_stats --script edgar_monitor --table portfolio_alerts -- python -m intelligence.edgar_monitor || echo "edgar_monitor" >> /tmp/failures.txt
 
       - name: Earnings radar (aviso previo de resultados)
-        run: python -m intelligence.earnings_radar || echo "earnings_radar" >> /tmp/failures.txt
+        run: python -m intelligence.pipeline_stats --script earnings_radar --table portfolio_alerts -- python -m intelligence.earnings_radar || echo "earnings_radar" >> /tmp/failures.txt
 
       - name: Alert outcomes (feedback loop)
-        run: python -m intelligence.alert_outcomes || echo "alert_outcomes" >> /tmp/failures.txt
+        run: python -m intelligence.pipeline_stats --script alert_outcomes -- python -m intelligence.alert_outcomes || echo "alert_outcomes" >> /tmp/failures.txt
 
       # El email lo envía daily-email.yml a las 8:30 (30 min después de este
       # pipeline) — no duplicar el envío aquí.
