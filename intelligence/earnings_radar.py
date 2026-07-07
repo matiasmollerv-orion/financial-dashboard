@@ -126,14 +126,18 @@ def main():
         print("DRY RUN — no se guardó nada")
         return
 
+    sb = get_client()
+    # Desactivar TODAS las earnings previas (los earnings que pasaron no
+    # deben quedar activos como zombies)
+    try:
+        sb.table("portfolio_alerts").update({"activo_alerta": False}) \
+          .eq("activo_alerta", True).eq("categoria", "earnings_proximos").execute()
+    except Exception:
+        pass
     if alerts:
-        sb = get_client()
         ins = 0
         for a in alerts:
             try:
-                sb.table("portfolio_alerts").update({"activo_alerta": False}) \
-                  .eq("activo_alerta", True).eq("categoria", a["categoria"]) \
-                  .eq("activo", a["activo"]).execute()
                 sb.table("portfolio_alerts").insert(a).execute()
                 ins += 1
             except Exception as e:

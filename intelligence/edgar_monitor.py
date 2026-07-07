@@ -361,18 +361,21 @@ def check_13f(days: int) -> list:
 
 
 # ── SAVE ────────────────────────────────────────────────────
+OWNED_CATEGORIES = ["insider_buy", "insider_cluster", "sec_8k", "smart_money_13f"]
+
+
 def save_alerts(alerts: list) -> dict:
-    if not alerts:
-        return {"insertadas": 0, "errores": 0}
     sb = get_client()
     ins = err = 0
-    pairs = set((a["categoria"], a["activo"]) for a in alerts)
-    for cat, activo in pairs:
+    # Desactivar TODAS las previas de categorías propias (evita señales zombie)
+    for cat in OWNED_CATEGORIES:
         try:
             sb.table("portfolio_alerts").update({"activo_alerta": False}) \
-              .eq("activo_alerta", True).eq("categoria", cat).eq("activo", activo).execute()
+              .eq("activo_alerta", True).eq("categoria", cat).execute()
         except Exception:
             pass
+    if not alerts:
+        return {"insertadas": 0, "errores": 0}
     for a in alerts:
         try:
             sb.table("portfolio_alerts").insert(a).execute()

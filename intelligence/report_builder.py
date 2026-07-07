@@ -355,6 +355,91 @@ def _fecha_es() -> str:
     return fecha_es[0].upper() + fecha_es[1:]
 
 
+# ── RESUMEN EJECUTIVO SIN AI ────────────────────────────────
+@_safe_query
+def build_resumen_ejecutivo() -> str:
+    """Párrafo de estado general generado por template desde las alertas
+    activas (determinístico, $0 en API). Reemplaza la prosa del daily_brief AI."""
+    from datetime import timedelta
+    sb = get_client()
+    cutoff = (date.today() - timedelta(days=2)).isoformat()
+    r = (sb.table("portfolio_alerts").select("categoria,activo,severidad,titulo,metricas")
+         .eq("activo_alerta", True).neq("categoria", "daily_brief")
+         .gte("fecha_alerta", cutoff)
+         .order("fecha_alerta", desc=True)
+         .limit(200).execute())
+    rows = r.data or []
+    if not rows:
+        return "Sin señales activas hoy. El DCA semanal sigue su curso."
+
+    by_cat = {}
+    for a in rows:
+        by_cat.setdefault(a["categoria"], []).append(a)
+
+    def top_de(cats):
+        """Ticker con mayor score dentro de esas categorías."""
+        pool = [a for c in cats for a in by_cat.get(c, [])]
+        if not pool:
+            return None
+        pool.sort(key=lambda a: -(a.get("metricas") or {}).get("score", 0))
+        return pool[0]
+
+    partes = []
+
+    # 1. Régimen de mercado (los bear crash cuentan una historia)
+    crashes = [a for a in by_cat.get("oportunidad_dip", [])
+               if (a.get("metricas") or {}).get("rule") == "bear_crash"]
+    if len(crashes) >= 4:
+        tks = ", ".join(sorted(a["activo"] for a in crashes[:5]))
+        partes.append(f"Mercado castigado en especulativos: {len(crashes)} activos bajo "
+                      f"-40% desde máximos ({tks}{'…' if len(crashes) > 5 else ''}).")
+    elif len(crashes) >= 1:
+        partes.append(f"{len(crashes)} activo(s) en bear crash (>-40% desde ATH).")
+
+    # 2. Señales de compra
+    compras = [a for c in ("oportunidad_dip", "oportunidad_rsi2", "watchlist_entry")
+               for a in by_cat.get(c, [])]
+    if compras:
+        top = top_de(("oportunidad_dip", "oportunidad_rsi2", "watchlist_entry"))
+        partes.append(f"{len(compras)} señales de compra activas — la de mayor score: "
+                      f"{top['titulo']}.")
+
+    # 3. Señales informacionales (EDGAR)
+    insiders = by_cat.get("insider_cluster", []) + by_cat.get("insider_buy", [])
+    if insiders:
+        tks = ", ".join(sorted({a["activo"] for a in insiders}))
+        partes.append(f"Insiders comprando en: {tks} (SEC Form 4).")
+    f13 = by_cat.get("smart_money_13f", [])
+    if f13:
+        tks = ", ".join(sorted({a["activo"] for a in f13})[:4])
+        partes.append(f"Smart money (13F nuevo) se movió en: {tks}.")
+
+    # 4. Lado de venta / protección
+    ventas = [a for c in ("venta_concentracion", "venta_trailing", "venta_evaluar")
+              for a in by_cat.get(c, [])]
+    if ventas:
+        n_eval = len(by_cat.get("venta_evaluar", []))
+        n_prot = len(by_cat.get("venta_trailing", [])) + len(by_cat.get("venta_concentracion", []))
+        det = []
+        if n_eval:
+            det.append(f"{n_eval} posiciones duplicadas por evaluar")
+        if n_prot:
+            det.append(f"{n_prot} de protección/concentración")
+        partes.append(f"Lado venta: {' y '.join(det)}.")
+
+    # 5. Eventos próximos
+    earn = by_cat.get("earnings_proximos", [])
+    if earn:
+        tks = ", ".join(f"{a['activo']}" for a in earn[:4])
+        partes.append(f"Earnings próximos: {tks} — decidir antes del print.")
+    ev = by_cat.get("evento_programado", [])
+    if ev:
+        partes.append(f"⚠️ {ev[0]['titulo']}.")
+
+    return " ".join(partes) if partes else \
+        f"{len(rows)} señales activas de baja prioridad. Nada urgente hoy."
+
+
 # ── BUILD PRINCIPAL ─────────────────────────────────────────
 def build_daily_report() -> tuple:
     """
@@ -374,7 +459,7 @@ def build_daily_report() -> tuple:
     if not alertas:
         alertas = load_raw_opportunity_alerts(max_alerts=5)
         if alertas:
-            resumen_mercado = resumen_mercado or "Brief AI no disponible. Mostrando top 5 alertas del detector automatico."
+            resumen_mercado = resumen_mercado or build_resumen_ejecutivo()
 
     n_alertas = len(alertas)
     fecha = _fecha_es()

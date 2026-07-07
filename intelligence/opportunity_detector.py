@@ -625,24 +625,30 @@ def check_target_drift(watchlist_cfg: dict, metrics_map: dict) -> list:
 
 
 # ── SAVE ────────────────────────────────────────────────────
-def save_alerts(alerts: list) -> dict:
-    if not alerts:
-        return {"insertadas": 0, "duplicadas": 0, "errores": 0}
+# Categorías que ESTE módulo posee: se desactivan TODAS antes de insertar,
+# para que las señales que dejaron de disparar no queden activas para siempre.
+OWNED_CATEGORIES = ["oportunidad_dip", "oportunidad_rsi2", "watchlist_entry",
+                    "watchlist_tier2", "accion_pendiente", "momentum_warning",
+                    "target_recalibrar"]
 
+
+def save_alerts(alerts: list) -> dict:
     sb = get_client()
     ins = dup = err = 0
 
-    # Desactivar previas con misma (categoria, activo)
-    pairs = set((a["categoria"], a["activo"]) for a in alerts)
-    for cat, activo in pairs:
+    # Desactivar TODAS las alertas previas de las categorías propias
+    # (no solo las que se re-insertan — evita señales zombie)
+    for cat in OWNED_CATEGORIES:
         try:
             sb.table("portfolio_alerts").update({"activo_alerta": False}) \
               .eq("activo_alerta", True) \
               .eq("categoria", cat) \
-              .eq("activo", activo) \
               .execute()
         except Exception:
             pass
+
+    if not alerts:
+        return {"insertadas": 0, "duplicadas": 0, "errores": 0}
 
     for a in alerts:
         try:

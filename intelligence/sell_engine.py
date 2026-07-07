@@ -347,19 +347,23 @@ def fetch_metrics(df: pd.DataFrame, profile: dict) -> dict:
     return metrics
 
 
-# ── SAVE (mismo mecanismo que opportunity_detector) ─────────
+# ── SAVE ────────────────────────────────────────────────────
+OWNED_CATEGORIES = ["venta_concentracion", "venta_trailing", "venta_evaluar",
+                    "evento_programado", "liquidez_emprendimiento"]
+
+
 def save_alerts(alerts: list) -> dict:
-    if not alerts:
-        return {"insertadas": 0, "duplicadas": 0, "errores": 0}
     sb = get_client()
     ins = dup = err = 0
-    pairs = set((a["categoria"], a["activo"]) for a in alerts)
-    for cat, activo in pairs:
+    # Desactivar TODAS las previas de categorías propias (evita señales zombie)
+    for cat in OWNED_CATEGORIES:
         try:
             sb.table("portfolio_alerts").update({"activo_alerta": False}) \
-              .eq("activo_alerta", True).eq("categoria", cat).eq("activo", activo).execute()
+              .eq("activo_alerta", True).eq("categoria", cat).execute()
         except Exception:
             pass
+    if not alerts:
+        return {"insertadas": 0, "duplicadas": 0, "errores": 0}
     for a in alerts:
         try:
             sb.table("portfolio_alerts").insert(a).execute()
