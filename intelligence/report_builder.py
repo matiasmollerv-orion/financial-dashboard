@@ -386,7 +386,12 @@ def build_resumen_ejecutivo() -> str:
 
     partes = []
 
-    # 1. Régimen de mercado (los bear crash cuentan una historia)
+    # 0. Régimen de mercado (clasificador FRED+SPY+VIX, encabeza todo)
+    reg = by_cat.get("market_regime", [])
+    if reg:
+        partes.append(reg[0].get("mensaje", reg[0].get("titulo", "")))
+
+    # 1. Contexto de bear crashes (idiosincrático vs sistémico)
     crashes = [a for a in by_cat.get("oportunidad_dip", [])
                if (a.get("metricas") or {}).get("rule") == "bear_crash"]
     if len(crashes) >= 4:

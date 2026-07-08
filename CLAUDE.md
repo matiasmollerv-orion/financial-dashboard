@@ -67,8 +67,9 @@ intelligence/
     watchlist.yaml    ← Fuente de verdad: 25 recurrentes, watchlist tiers, entry targets, buckets, 13F, pendientes
     rules.yaml        ← Reglas Connors DIP + z-score gating + RSI(2) + filtros globales
   news_fetcher.py     ← RSS → market_news (cartera + watchlist tickers + bucket keywords)
-  opportunity_detector.py ← v3: dips z-score + RSI(2) + entry targets + score compuesto 0-100 + target drift (lunes)
-  sell_engine.py      ← v1: SEÑALES DE VENTA — concentración >12%, trailing 2σ, EVALUAR al duplicar, eventos, liquidez
+  market_regime.py    ← v1: risk-on/neutral/risk-off — FRED sin key (HY spread, curva) + SPY/SMA200 + VIX. Modula sizing y sugerencias
+  opportunity_detector.py ← v4: dips z-score + RSI(2) + gate fundamental anti-cuchillo (yfinance) + SIZING POR RIESGO (monto = 0.25% portafolio / σ mensual del ticker, no montos fijos) + régimen + score 0-100 + target drift (lunes)
+  sell_engine.py      ← v2: SEÑALES DE VENTA — concentración >12%, trailing 2σ, EVALUAR al duplicar, eventos, liquidez, factor-cluster (lunes: posiciones con corr>0.6 = una apuesta; excluye ETFs core del clustering)
   edgar_monitor.py    ← v1: SEC EDGAR — Form 4 insider buys/clusters, 8-K materiales, 13F smart money diff
   earnings_radar.py   ← v1: aviso 5 días ANTES de earnings de posiciones grandes + tier1
   alert_outcomes.py   ← v1: feedback loop — retorno forward +5/20/60d en metricas de cada alerta; --scorecard

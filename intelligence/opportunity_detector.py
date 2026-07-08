@@ -67,6 +67,64 @@ def load_watchlist_config() -> dict:
         return yaml.safe_load(f)
 
 
+PROFILE_PATH = Path(__file__).parent / "config" / "investor_profile.yaml"
+
+
+def load_profile() -> dict:
+    try:
+        with open(PROFILE_PATH, encoding="utf-8") as f:
+            return yaml.safe_load(f)
+    except Exception:
+        return {}
+
+
+# ── SIZING POR RIESGO ───────────────────────────────────────
+def monto_por_riesgo(vol_diaria_pct, sizing: dict, portfolio_usd: float,
+                     mult: float = 1.0, regimen: str = "neutral") -> tuple:
+    """Monto que iguala el RIESGO entre compras: monto = riesgo_presupuestado / σ_mensual.
+    Misma plata en un ticker de vol 80% arriesga 4× más que en uno de 20%."""
+    import math
+    lo_min = sizing.get("monto_min_usd", 100)
+    hi_max = sizing.get("monto_max_usd", 1000)
+    if not vol_diaria_pct or not portfolio_usd:
+        return (150, 250)
+    sigma_mensual = vol_diaria_pct / 100 * math.sqrt(21)
+    riesgo_usd = portfolio_usd * sizing.get("riesgo_por_compra_pct", 0.5) / 100
+    base = riesgo_usd / max(sigma_mensual, 0.01) * mult
+    if regimen == "risk_off":
+        base *= sizing.get("factor_risk_off", 0.5)
+    # Clamp AMBOS extremos a [min, max] (el techo es el cash mensual disponible)
+    lo = min(max(base * 0.8, lo_min), hi_max)
+    hi = min(max(base * 1.2, lo), hi_max)
+    lo = int(round(lo / 10) * 10)
+    hi = int(max(round(hi / 10) * 10, lo))
+    return (lo, hi)
+
+
+# ── GATE FUNDAMENTAL (anti-cuchillo-cayendo) ────────────────
+def check_fundamentals(ticker: str, especulativos: set) -> dict:
+    """Chequeo barato de deterioro fundamental via yfinance (solo para
+    tickers que YA dispararon un dip — pocas llamadas por corrida).
+    El error retail #1 es promediar a la baja en negocios que se deterioran."""
+    try:
+        import yfinance as yf
+        info = yf.Ticker(ticker).info or {}
+    except Exception:
+        return {"estado": "sin_datos"}
+    if info.get("quoteType") != "EQUITY":
+        return {"estado": "etf"}  # ETFs: diversificados, sin gate
+    debilidades = []
+    rg = info.get("revenueGrowth")
+    if rg is not None and rg < -0.05:
+        debilidades.append(f"ingresos {rg*100:.0f}% YoY")
+    pm = info.get("profitMargins")
+    # A las especulativas no les exigimos margen (pre-profit por definición),
+    # pero ingresos cayendo es mala señal en cualquier etapa
+    if ticker not in especulativos and pm is not None and pm < -0.15:
+        debilidades.append(f"margen {pm*100:.0f}%")
+    return {"estado": "debil" if debilidades else "ok", "notas": debilidades}
+
+
 def load_cartera() -> pd.DataFrame:
     sb = get_client()
     r = sb.table("cartera_actual").select("*").execute()
@@ -195,7 +253,8 @@ def calc_metrics(close: pd.Series, volume: pd.Series) -> dict:
 # ── CONNORS DIP RULES ──────────────────────────────────────
 def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
                            tesis: str = "", bucket: str = "",
-                           conviction: str = "cartera") -> list:
+                           conviction: str = "cartera",
+                           ctx: dict = None) -> list:
     """Aplica reglas Connors sobre un ticker. Retorna list[dict] de alertas.
 
     conviction: "cartera" | "recurrente" | "tier1" | "tier2" | "tier3"
@@ -204,6 +263,9 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
       - tier3: sugerencia = EVALUAR solamente (seguimiento, sin acción)
     """
     alerts = []
+    # Contexto de sizing/régimen (guardar ANTES de reutilizar el nombre ctx
+    # como etiqueta de bucket más abajo)
+    sctx = ctx if isinstance(ctx, dict) else {}
     dips = rules.get("dips", {})
     momentum = rules.get("momentum", {})
     ctx = f" [{bucket}]" if bucket else ""
@@ -214,20 +276,32 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
     is_tier2 = conviction == "tier2"
     # tier3 = solo evaluar
 
+    sizing = sctx.get("sizing", {})
+    portfolio_usd = sctx.get("portfolio_usd", 0)
+    regimen = sctx.get("regimen", "neutral")
+    prefijo_regimen = ("⚠️ RISK-OFF: caída probablemente sistémica, no idiosincrática. "
+                       if regimen == "risk_off" else "")
+
     def _sugerencia_dip(rule_name, rule_cfg):
-        lo = rule_cfg.get("accion_min_usd", 150)
-        hi = rule_cfg.get("accion_max_usd", 250)
+        # Monto por RIESGO (vol propia del ticker), no fijo
+        if sizing and portfolio_usd:
+            lo, hi = monto_por_riesgo(m.get("vol_diaria_pct"), sizing, portfolio_usd,
+                                      mult=rule_cfg.get("sizing_mult", 1.0),
+                                      regimen=regimen)
+        else:
+            lo = rule_cfg.get("accion_min_usd", 150)
+            hi = rule_cfg.get("accion_max_usd", 250)
         if is_actionable:
             if rule_name == "small_dip":
-                return f"Considerar compra USD {lo}-{hi}."
+                return f"{prefijo_regimen}Considerar compra USD {lo}-{hi} (sizing por vol)."
             elif rule_name == "medium_dip":
-                return f"Compra puntual USD {lo}-{hi} si tesis intacta."
+                return f"{prefijo_regimen}Compra puntual USD {lo}-{hi} si tesis intacta (sizing por vol)."
             elif rule_name == "large_dip":
-                return f"Oportunidad agresiva USD {lo}-{hi}."
+                return f"{prefijo_regimen}Oportunidad agresiva USD {lo}-{hi} (sizing por vol)."
             elif rule_name == "bear_crash":
-                return f"MANUAL REVIEW. Si tesis viva, compra USD {lo}-{hi}."
+                return f"{prefijo_regimen}MANUAL REVIEW. Si tesis viva, compra USD {lo}-{hi}."
         elif is_tier2:
-            return f"Evaluar compra oportunística. Entry si tesis OK."
+            return f"{prefijo_regimen}Evaluar compra oportunística. Entry si tesis OK."
         else:  # tier3
             return f"Solo seguimiento. Evaluar si tesis mejora para subir a Tier 2."
 
@@ -629,7 +703,7 @@ def check_target_drift(watchlist_cfg: dict, metrics_map: dict) -> list:
 # para que las señales que dejaron de disparar no queden activas para siempre.
 OWNED_CATEGORIES = ["oportunidad_dip", "oportunidad_rsi2", "watchlist_entry",
                     "watchlist_tier2", "accion_pendiente", "momentum_warning",
-                    "target_recalibrar"]
+                    "target_recalibrar", "market_regime"]
 
 
 def save_alerts(alerts: list) -> dict:
@@ -691,7 +765,32 @@ def main():
 
     rules = load_rules()
     wl_cfg = load_watchlist_config()
+    profile = load_profile()
     df_cart = load_cartera()
+
+    # ── Régimen de mercado (modula TODAS las señales) ────────
+    print("Clasificando régimen de mercado (FRED + SPY + VIX)...")
+    try:
+        from intelligence.market_regime import compute_market_regime, regime_label
+        regime = compute_market_regime()
+        regime_txt = regime_label(regime)
+        print(f"  {regime_txt}")
+    except Exception as e:
+        regime = {"regimen": "neutral", "puntos_estres": 0, "senales_disponibles": 0, "senales": {}}
+        regime_txt = "Régimen no disponible (error de datos)"
+        print(f"  {str(e)[:80]}")
+
+    # Contexto para sizing por riesgo
+    portfolio_intl_usd = 0
+    if not df_cart.empty:
+        intl = df_cart[df_cart["mercado"] == "internacional"]
+        portfolio_intl_usd = float(intl["valor_usd"].sum())
+    sizing_ctx = {
+        "sizing": profile.get("sizing", {}),
+        "portfolio_usd": portfolio_intl_usd,
+        "regimen": regime["regimen"],
+    }
+    especulativos = set(profile.get("clasificacion", {}).get("especulativo", []))
 
     # Build exclusion list from watchlist.yaml
     excluded = set(wl_cfg.get("etfs_core_no_alert", []))
@@ -818,7 +917,7 @@ def main():
     # ── Run all checks ───────────────────────────────────────
     all_alerts = []
 
-    # 1. Connors DIP rules on all tickers
+    # 1. Connors DIP rules on all tickers (con sizing por riesgo + régimen)
     print("Connors DIP rules...")
     for tk, m in metrics_map.items():
         info = tickers_to_eval.get(tk, {})
@@ -827,9 +926,34 @@ def main():
             tesis=info.get("tesis", ""),
             bucket=info.get("bucket", ""),
             conviction=info.get("conviction", "cartera"),
+            ctx=sizing_ctx,
         )
         all_alerts.extend(alerts)
     print(f"  {len(all_alerts)} alertas DIP/momentum")
+
+    # 1b. Gate fundamental: dips en negocios deteriorándose se degradan
+    #     (solo tickers que YA alertaron — pocas llamadas yfinance)
+    dip_tickers = {a["activo"] for a in all_alerts
+                   if a["categoria"] in ("oportunidad_dip", "oportunidad_rsi2")}
+    if dip_tickers:
+        print(f"Gate fundamental ({len(dip_tickers)} tickers con dip)...")
+        degradadas = 0
+        fund_cache = {}
+        for tk in dip_tickers:
+            fund_cache[tk] = check_fundamentals(tk, especulativos)
+        for a in all_alerts:
+            if a["categoria"] not in ("oportunidad_dip", "oportunidad_rsi2"):
+                continue
+            f = fund_cache.get(a["activo"], {})
+            a["metricas"]["fundamentales"] = f.get("estado", "sin_datos")
+            if f.get("estado") == "debil":
+                notas = ", ".join(f.get("notas", []))
+                sev_down = {"critica": "alta", "alta": "media", "media": "info"}
+                a["severidad"] = sev_down.get(a["severidad"], "info")
+                a["sugerencia"] = (f"⚠️ FUNDAMENTALES DÉBILES ({notas}): NO promediar "
+                                   f"sin revisar la tesis primero. " + a.get("sugerencia", ""))
+                degradadas += 1
+        print(f"  {degradadas} alertas degradadas por fundamentales débiles")
 
     # 2. Watchlist entry targets (Tier 1)
     print("Entry targets (Tier 1)...")
@@ -867,6 +991,20 @@ def main():
     if len(all_alerts) > max_alerts:
         print(f"  Cap: {len(all_alerts)} → top {max_alerts} por score")
         all_alerts = all_alerts[:max_alerts]
+
+    # Alerta de régimen (informativa, exenta del cap — encabeza el email)
+    all_alerts.append({
+        "categoria": "market_regime", "severidad": "info", "activo": "MARKET",
+        "titulo": regime_txt[:120],
+        "mensaje": regime_txt,
+        "metricas": {"regimen": regime["regimen"], "puntos": regime["puntos_estres"],
+                     "disponibles": regime["senales_disponibles"], "score": 0},
+        "sugerencia": {
+            "risk_on": "Señales de compra operan normal.",
+            "neutral": "Cautela moderada: sizing estándar, confirmar tesis antes de agregar.",
+            "risk_off": "Sizing reducido 50% automático. Priorizar core/DCA, no promediar especulativas.",
+        }[regime["regimen"]],
+    })
 
     print(f"\nTotal alertas: {len(all_alerts)}")
     if all_alerts:

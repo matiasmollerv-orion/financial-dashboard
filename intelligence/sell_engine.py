@@ -278,6 +278,90 @@ def check_liquidez(df: pd.DataFrame, profile: dict) -> list:
     return alerts
 
 
+# ── 7. EXPOSICIÓN POR FACTOR (clustering de correlaciones) ──
+def check_factor_exposure(df: pd.DataFrame, profile: dict, force: bool = False) -> list:
+    """Posiciones que se mueven juntas son UNA apuesta aunque sean tickers
+    distintos (ej: NVDA+TSM+ASML+MU+AVGO+CRWV = cadena IA). Clustering greedy
+    por correlación de retornos 6m; alerta si el cluster mayor supera
+    max_pct_factor. Corre solo los lunes (la concentración no cambia a diario)."""
+    alerts = []
+    if not force and date.today().weekday() != 0:
+        return alerts
+    max_factor = profile.get("limites", {}).get("max_pct_factor", 40.0)
+
+    # Posiciones internacionales relevantes (> USD 500), EXCLUYENDO ETFs core:
+    # el core ES el factor mercado (diversificado por construcción) — incluirlo
+    # hace que todo clusterice con VOO y esconde las apuestas temáticas reales
+    core = set(profile.get("clasificacion", {}).get("core", []))
+    pos = df[(df["mercado"] == "internacional") & (df["valor_usd"] > 500)
+             & (~df["ticker"].isin(core))].copy()
+    if len(pos) < 5:
+        return alerts
+    total_usd = df[df["mercado"].isin(["internacional", "crypto"])]["valor_usd"].sum()
+    valores = dict(zip(pos["ticker"], pos["valor_usd"]))
+    tickers = sorted(valores.keys())
+
+    try:
+        import yfinance as yf
+        raw = yf.download(tickers, period="6mo", interval="1d",
+                          auto_adjust=True, progress=False, group_by="ticker")
+        closes = {}
+        for tk in tickers:
+            try:
+                s = raw[tk]["Close"].dropna() if hasattr(raw.columns, "levels") else raw["Close"].dropna()
+                if len(s) >= 60:
+                    closes[tk] = s.pct_change().dropna()
+            except Exception:
+                continue
+        if len(closes) < 5:
+            return alerts
+        rets = pd.DataFrame(closes).dropna()
+        corr = rets.corr()
+    except Exception as e:
+        print(f"  factor: error bajando precios: {str(e)[:80]}")
+        return alerts
+
+    # Clustering greedy: semilla = posición más grande sin asignar;
+    # se agregan los tickers con corr > 0.6 con la semilla
+    UMBRAL = 0.6
+    sin_asignar = sorted(corr.columns, key=lambda t: -valores.get(t, 0))
+    clusters = []
+    while sin_asignar:
+        semilla = sin_asignar.pop(0)
+        grupo = [semilla]
+        for tk in list(sin_asignar):
+            if corr.loc[semilla, tk] > UMBRAL:
+                grupo.append(tk)
+                sin_asignar.remove(tk)
+        clusters.append(grupo)
+
+    for grupo in clusters:
+        if len(grupo) < 3:
+            continue  # 2 tickers correlacionados no es "factor"
+        peso_usd = sum(valores.get(tk, 0) for tk in grupo)
+        pct = peso_usd / total_usd * 100 if total_usd > 0 else 0
+        if pct > max_factor:
+            corr_prom = float(pd.DataFrame(
+                [[corr.loc[a, b] for b in grupo] for a in grupo]).values.mean())
+            alerts.append({
+                "categoria":  "factor_concentracion",
+                "severidad":  "alta",
+                "activo":     grupo[0],
+                "titulo":     f"FACTOR: {len(grupo)} posiciones correlacionadas = {pct:.0f}% del portafolio",
+                "mensaje":    f"Estas {len(grupo)} posiciones se mueven juntas "
+                              f"(correlación promedio {corr_prom:.2f}): {', '.join(grupo)}. "
+                              f"Juntas son USD {peso_usd:,.0f} = {pct:.0f}% del portafolio "
+                              f"(límite factor: {max_factor:.0f}%). Son UNA apuesta, "
+                              f"no {len(grupo)} — si la tesis común se rompe, caen juntas.",
+                "metricas":   {"tickers": grupo, "pct_portafolio": round(pct, 1),
+                               "corr_promedio": round(corr_prom, 2),
+                               "valor_usd": round(peso_usd, 0)},
+                "sugerencia": f"Diversificación real: próximas compras fuera de este factor, "
+                              f"o trim de las posiciones con peor tesis del grupo.",
+            })
+    return alerts
+
+
 # ── MARKET METRICS (para contexto de duplicadas y trailing) ─
 def fetch_metrics(df: pd.DataFrame, profile: dict) -> dict:
     """Descarga 6m de historia solo para tickers que necesitan contexto:
@@ -349,7 +433,8 @@ def fetch_metrics(df: pd.DataFrame, profile: dict) -> dict:
 
 # ── SAVE ────────────────────────────────────────────────────
 OWNED_CATEGORIES = ["venta_concentracion", "venta_trailing", "venta_evaluar",
-                    "evento_programado", "liquidez_emprendimiento"]
+                    "evento_programado", "liquidez_emprendimiento",
+                    "factor_concentracion"]
 
 
 def save_alerts(alerts: list) -> dict:
@@ -410,6 +495,7 @@ def main():
         ("Trailing guardrail", lambda: check_trailing(df, profile, metrics_map)),
         ("Eventos programados", lambda: check_eventos(profile)),
         ("Liquidez emprendimiento", lambda: check_liquidez(df, profile)),
+        ("Exposición por factor (lunes)", lambda: check_factor_exposure(df, profile)),
     ]
     for nombre, fn in checks:
         try:

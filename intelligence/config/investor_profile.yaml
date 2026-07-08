@@ -40,6 +40,20 @@ limites:
   # Máx % de un bucket temático sobre el portafolio internacional
   max_pct_bucket: 25.0
 
+  # Máx % en un CLUSTER DE CORRELACIÓN (posiciones que se mueven juntas
+  # son UNA apuesta aunque sean tickers distintos — ej: cadena IA completa)
+  max_pct_factor: 40.0
+
+# ── SIZING POR RIESGO (reemplaza montos fijos) ───────────────────────────────
+# Cada compra arriesga el mismo % del portafolio: monto = riesgo / σ_mensual.
+# Misma plata en OKLO (vol 80%) arriesga 4× más que en UNH (vol 20%) —
+# el sizing por volatilidad iguala el riesgo, no el monto.
+sizing:
+  riesgo_por_compra_pct: 0.25  # % del portafolio intl que arriesga cada compra (a 1σ mensual)
+  monto_min_usd: 100
+  monto_max_usd: 1000          # tope = techo del cash oportunístico mensual
+  factor_risk_off: 0.5         # en régimen risk-off, todos los montos × 0.5
+
   # Capital fresco mensual para compras oportunísticas (además del DCA)
   cash_oportunistico_usd_mes: [500, 1000]
 
