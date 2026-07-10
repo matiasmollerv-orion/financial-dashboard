@@ -35,3 +35,4 @@ yfinance>=0.2.40
 # Inteligencia de mercado
 feedparser>=6.0.10         # parser de RSS
 anthropic>=0.34.0          # Claude API para análisis AI
+youtube-transcript-api>=0.6
