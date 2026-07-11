@@ -91,11 +91,16 @@ def _safe_query(fn):
 
 @_safe_query
 def load_daily_brief_json() -> dict:
-    """Carga el brief JSON estructurado (guardado en metricas.brief_json)."""
+    """Carga el brief JSON estructurado (guardado en metricas.brief_json).
+    SOLO briefs de las últimas 24h: un brief AI viejo (de cuando el
+    pipeline AI corría) NO debe pisar las alertas frescas del detector."""
+    from datetime import timedelta
     sb = get_client()
+    cutoff = (datetime.now() - timedelta(hours=24)).isoformat()
     r = (sb.table("portfolio_alerts")
            .select("mensaje,metricas,fecha_alerta")
            .eq("categoria", "daily_brief")
+           .gte("fecha_alerta", cutoff)
            .order("fecha_alerta", desc=True)
            .limit(1)
            .execute())
@@ -144,9 +149,25 @@ def load_raw_opportunity_alerts(max_alerts: int = 5) -> list:
     if not all_alerts:
         return []
 
-    # Sort by severity and take top N
+    # Dedupe por (categoria, activo) — quedarse con la fila más reciente
+    all_alerts.sort(key=lambda a: a.get("fecha_alerta") or "", reverse=True)
+    vistos = set()
+    unicos = []
+    for a in all_alerts:
+        key = (a.get("categoria"), a.get("activo"))
+        if key in vistos:
+            continue
+        vistos.add(key)
+        unicos.append(a)
+    all_alerts = unicos
+
+    # Sort por score compuesto (ya integra severidad + técnica + cross-signals);
+    # fallback a severidad para alertas sin score
     sev_order = {"critica": 0, "alta": 1, "media": 2, "baja": 3, "info": 4}
-    all_alerts.sort(key=lambda a: sev_order.get((a.get("severidad") or "info").lower(), 99))
+    all_alerts.sort(key=lambda a: (
+        -((a.get("metricas") or {}).get("score") or 0),
+        sev_order.get((a.get("severidad") or "info").lower(), 99),
+    ))
 
     # Convert to brief-compatible format
     result = []
@@ -372,8 +393,15 @@ def build_resumen_ejecutivo() -> str:
     if not rows:
         return "Sin señales activas hoy. El DCA semanal sigue su curso."
 
+    # Dedupe por (categoria, activo): el mecanismo de upsert puede dejar
+    # varias filas históricas activas del mismo par — contar UNA
+    vistos = set()
     by_cat = {}
-    for a in rows:
+    for a in rows:  # ya vienen ordenadas por fecha desc → gana la más nueva
+        key = (a["categoria"], a["activo"])
+        if key in vistos:
+            continue
+        vistos.add(key)
         by_cat.setdefault(a["categoria"], []).append(a)
 
     def top_de(cats):

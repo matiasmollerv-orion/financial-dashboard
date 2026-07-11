@@ -980,6 +980,20 @@ def main():
         all_alerts.extend(drift_alerts)
         print(f"  {len(drift_alerts)} targets a recalibrar")
 
+    # ── Coherencia con acciones pendientes: un ticker con VENDER
+    #    pendiente NUNCA debe generar sugerencias de COMPRA ─────
+    vender_tickers = {i["ticker"] for i in wl_cfg.get("acciones_pendientes", [])
+                      if i.get("accion") == "VENDER" and i.get("ticker")}
+    if vender_tickers:
+        antes = len(all_alerts)
+        all_alerts = [a for a in all_alerts
+                      if not (a["activo"] in vender_tickers and
+                              a["categoria"] in ("oportunidad_dip", "oportunidad_rsi2",
+                                                 "watchlist_entry", "watchlist_tier2"))]
+        if antes != len(all_alerts):
+            print(f"  Filtradas {antes - len(all_alerts)} alertas de compra en tickers "
+                  f"con VENDER pendiente: {sorted(vender_tickers)}")
+
     # ── Score compuesto: técnica × informacional × convicción ─
     print("Score compuesto (cross-signals: insiders + newsletters)...")
     insider_tks, mentions = fetch_cross_signals()
