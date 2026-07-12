@@ -1,26 +1,60 @@
 # =============================================================================
-# INVESTOR PROFILE — Perfil, límites y horizontes de Matías
+# INVESTOR PROFILE — Perfil, tesis y disciplina de riesgo de Matías
 # Fuente de verdad para TODAS las decisiones del sistema de alertas.
-# Toda alerta de compra/venta debe pasar por estos filtros.
-# Última actualización: 5 julio 2026 (definido en sesión con Claude)
+# Reconstruido desde cero el 12 jul 2026 en entrevista profunda (no inferido).
+# Todo lo marcado [Suposición] en comentarios debe confirmarse con Matías,
+# nunca asumirse. Ver [Seguro]/[Probable] para lo ya confirmado en sesión.
 # =============================================================================
 
 perfil:
   nombre: "Matías"
   moneda_base: "CLP"
   moneda_inversion: "USD"
-  estilo: "DCA semanal + compras oportunísticas en dips + satélites temáticos"
+  residencia_fiscal: "Chile"
+  estilo: "DCA semanal + compras oportunísticas en dips + apuestas temáticas de alta convicción"
+
+# ── QUIÉN ES (know-your-client, confirmado en entrevista, no inferido) ───────
+quien_soy:
+  horizonte_inversion_anios: 20
+  filosofia: >
+    Interés compuesto de largo plazo. No timea el mercado — la convicción en
+    la tesis determina la posición, no el precio de entrada. Alta tolerancia
+    al riesgo pero no asume riesgo mal compensado.
+  tolerancia_riesgo: "alta — CONFIRMADA por comportamiento, no solo declarada"
+  evidencia_comportamiento: >
+    En correcciones de mercado vividas (abril 2026 y otra similar, ambas
+    <20% de caída), compró más en vez de vender o dudar. No ha vivido un
+    mercado bajista real (>20% sostenido) — la disciplina de stop-loss/
+    revisión trimestral de este archivo existe para ESA situación no
+    probada aún, no por desconfianza en el track record que sí existe.
+  ingreso: "estable, sueldo fijo — sostiene el DCA sin riesgo de pausa forzada en crisis"
+  fondo_emergencia: "parcial — el portafolio cumple PARCIALMENTE rol de respaldo de liquidez, no es 100% capital intocable de 20 años"
+  tesis_central: >
+    Cobertura de la cadena de valor completa de infraestructura de IA
+    (litografía → foundry → GPU → memoria → custom silicon → neocloud →
+    hyperscalers → energía datacenter → aplicaciones). NO es una apuesta
+    a qué modelo/compañía de IA "gana" — es una apuesta a quién construye
+    la infraestructura que todos los jugadores de IA necesitan.
+  riesgo_burbuja_ia: >
+    Reconocido explícitamente por Matías. Por eso los nombres tempranos/
+    pre-consolidados de la pila IA llevan nivel_riesgo=alto con stop-loss
+    + revisión trimestral, aunque la tesis de fondo se mantenga.
+  megatendencias_declaradas:
+    - "IA / infraestructura (tesis central)"
+    - "Fintech LatAm"
+    - "Salud / GLP-1 / longevidad"
+    - "Defensa / drones"
+    - "Movilidad (ride-hailing, EV, robotaxi)"
+    - "Energía / electrificación"
+    - "Materiales críticos (litio, tierras raras, cobre)"
 
 # ── OBJETIVO EMPRENDIMIENTO (restricción de liquidez más importante) ─────────
-# Matías planea emprender y podría necesitar capital del portafolio.
 objetivo_emprendimiento:
-  horizonte_anios: [1, 2]          # necesita el capital en 1-2 años
-  pct_portafolio_tocable: [20, 30] # 20-30% del portafolio total
-  # Implicación: ese 20-30% debe estar en activos LÍQUIDOS y de BAJA volatilidad
-  # (ETFs core, large caps estables). NO en especulativos (OKLO, IONQ, CRWV...).
-  # El sistema alerta si la porción "estable+líquida" del portafolio cae bajo el
-  # mínimo tocable.
-  activos_elegibles_liquidez:      # qué cuenta como "tocable sin dolor"
+  horizonte_anios: [1, 2]
+  pct_portafolio_tocable: [20, 30]
+  sector: "aún sin definir"
+  # Trigger de revisión: ver triggers_revision_futura abajo
+  activos_elegibles_liquidez:
     - VTI
     - VOO
     - VT
@@ -33,82 +67,221 @@ objetivo_emprendimiento:
 
 # ── LÍMITES DE RIESGO ────────────────────────────────────────────────────────
 limites:
-  # Máx % de UNA posición individual sobre el portafolio internacional.
-  # Excluye ETFs core (diversificados por construcción).
-  max_pct_posicion_individual: 12.0
+  max_pct_posicion_individual: 12.0   # excluye ETFs core (diversificados por construcción)
+  max_pct_bucket: 25.0                # máx % de una vertical temática
+  max_pct_factor: 40.0                # máx % en un cluster de correlación (posiciones que se mueven juntas)
 
-  # Máx % de un bucket temático sobre el portafolio internacional
-  max_pct_bucket: 25.0
-
-  # Máx % en un CLUSTER DE CORRELACIÓN (posiciones que se mueven juntas
-  # son UNA apuesta aunque sean tickers distintos — ej: cadena IA completa)
-  max_pct_factor: 40.0
-
-# ── SIZING POR RIESGO (reemplaza montos fijos) ───────────────────────────────
-# Cada compra arriesga el mismo % del portafolio: monto = riesgo / σ_mensual.
-# Misma plata en OKLO (vol 80%) arriesga 4× más que en UNH (vol 20%) —
-# el sizing por volatilidad iguala el riesgo, no el monto.
+# ── SIZING POR RIESGO ────────────────────────────────────────────────────────
 sizing:
-  riesgo_por_compra_pct: 0.25  # % del portafolio intl que arriesga cada compra (a 1σ mensual)
+  riesgo_por_compra_pct: 0.25
   monto_min_usd: 100
-  monto_max_usd: 1000          # tope = techo del cash oportunístico mensual
-  factor_risk_off: 0.5         # en régimen risk-off, todos los montos × 0.5
-
-  # Capital fresco mensual para compras oportunísticas (además del DCA)
+  monto_max_usd: 1000
+  factor_risk_off: 0.5
   cash_oportunistico_usd_mes: [500, 1000]
-
-  # DCA mensual ya comprometido (referencia, no tocar)
   dca_usd_mes: 1802
 
-# ── HORIZONTES POR TIPO DE POSICIÓN ─────────────────────────────────────────
-# Cada bucket tiene horizonte y regla de salida distinta.
-horizontes:
-  core:            # ETFs diversificados — VTI, VOO, VT, VXUS, VWO...
-    anios: 20
-    venta: "nunca por precio; solo por rebalanceo o necesidad de liquidez"
-  conviccion:      # NU, MELI, NVDA, TSM, ASML, MSFT, GOOGL, AMZN, LLY, UNH
-    anios: [5, 10]
-    venta: "solo si tesis rota o concentración excesiva"
-  satelite:        # EWY, INDA, ILF, GLDM, CCJ, ARES, MU, AVGO
-    anios: [3, 7]
-    venta: "revisión anual de tesis; trim si concentración"
-  especulativo:    # OKLO, IONQ, CRWV, NBIS, CBRS, KTOS, RKLB y small caps
-    anios: [2, 5]
-    venta: "trailing por volatilidad + revisión de tesis con fecha; EVALUAR al duplicar"
+# =============================================================================
+# VERTICALES TEMÁTICAS — el "por qué" de cada posición (NO determina cuándo
+# vender por calendario; eso lo determina nivel_riesgo, ver más abajo).
+# Cada ticker lleva: rol dentro de la vertical + nivel_riesgo (alto/medio/bajo).
+# =============================================================================
+verticales:
 
-# Clasificación explícita de tickers a bucket de horizonte
-# (los no listados: el sistema infiere por watchlist.yaml o asume "satelite")
-#
-# Criterios (consenso Lynch / core-satellite / calidad institucional):
-#   conviccion:   GAAP rentable 3+ años, FCF positivo, líder con moat, >USD 50B,
-#                 la valuación se sostiene con utilidades ACTUALES
-#   satelite:     rentable pero cíclica/temática, o ETF sectorial/país
-#   especulativo: pre-revenue o pérdidas GAAP, IPO <2 años, outcome binario,
-#                 la valuación se sostiene con narrativa de TAM futuro
-clasificacion:
-  core: [VTI, VOO, VT, VXUS, VWO, VTV, BND, BNDX, IEF, VGSH, VTIP, SCHP, GLDM]
-  conviccion: [NU, MELI, NVDA, TSM, ASML, MSFT, GOOGL, AMZN, LLY, UNH,
-               AVGO, UBER, AMD, PANW, BCI]
-  satelite: [EWY, INDA, ILF, EWJ, FTEC, CCJ, ARES, MU, SQM, MRVL, LSCC,
-             HOOD, SOFI, URNM, QCOM, COHR, GEV, VST]
-  especulativo: [OKLO, IONQ, CRWV, NBIS, CBRS, KTOS, RKLB, PONY, ASTS, RGTI,
-                 AMBA, BE, PURR, VCX, MP, SYM, RDW, RXRX, SDGR, AVAV, LITE, AAOI]
+  ia_pila_completa:
+    tesis: >
+      Cobertura de la cadena de valor de infraestructura IA. Tesis central
+      declarada por Matías — no apuesta de qué modelo gana, apuesta a la
+      infraestructura que todos necesitan.
+    horizonte_venta: "mientras la tesis viva; sin fecha de venta por calendario. Sale solo si la tesis se rompe."
+    tickers:
+      NVDA:  { rol: "GPU",                          nivel_riesgo: bajo }
+      TSM:   { rol: "foundry",                       nivel_riesgo: bajo }
+      ASML:  { rol: "litografía (monopolio EUV)",    nivel_riesgo: bajo }
+      MSFT:  { rol: "hyperscaler / cloud IA",         nivel_riesgo: bajo }
+      GOOGL: { rol: "hyperscaler / cloud IA",         nivel_riesgo: bajo }
+      AMZN:  { rol: "hyperscaler (AWS)",              nivel_riesgo: bajo }
+      META:  { rol: "hyperscaler / aplicaciones",     nivel_riesgo: bajo }
+      MU:    { rol: "memoria (HBM)",                  nivel_riesgo: medio }
+      AVGO:  { rol: "custom silicon",                 nivel_riesgo: medio }
+      MRVL:  { rol: "custom silicon (NVLink Fusion)", nivel_riesgo: medio }
+      ANET:  { rol: "networking datacenter",          nivel_riesgo: medio }
+      CEG:   { rol: "energía datacenter (nuclear)",   nivel_riesgo: medio }
+      VRT:   { rol: "infraestructura eléctrica datacenter", nivel_riesgo: medio }
+      CRWV:  { rol: "neocloud (pre-consolidación)",   nivel_riesgo: alto }
+      NBIS:  { rol: "neocloud (pre-consolidación)",   nivel_riesgo: alto }
 
-# ── POLÍTICA DE PROFIT TAKING ────────────────────────────────────────────────
-# Decisión de Matías: NO trims mecánicos. Al duplicar una especulativa, el
-# sistema genera alerta EVALUAR con contexto (momentum, distancia de ATH,
-# volumen, tesis) para decidir caso a caso: agregar más, mantener o recortar.
+  fintech_latam:
+    tesis: >
+      NU es la posición de alta convicción declarada explícitamente por
+      Matías — fintech LatAm escalando con ROE alto. MELI expresa
+      ecommerce + fintech regional (Mercado Pago).
+    horizonte_venta: "mientras la tesis viva. NU no es candidata a venta salvo ruptura de tesis."
+    tickers:
+      NU:   { rol: "alta convicción declarada — fintech LatAm", nivel_riesgo: medio }
+      MELI: { rol: "ecommerce + fintech regional",              nivel_riesgo: medio }
+
+  salud_longevidad:
+    tesis: >
+      LLY es convicción real (liderazgo GLP-1/Ozempic). UNH entró
+      oportunista por precio — en revisión activa, no descartada.
+      Interés declarado en sumar apuestas más innovadoras de longevidad/
+      biohacking; sin candidatos identificados todavía.
+    horizonte_venta: "LLY mientras tesis GLP-1 viva. UNH sujeta a revisión de si la tesis original (precio) sigue siendo la razón de tenerla."
+    tickers:
+      LLY: { rol: "líder GLP-1, convicción real",        nivel_riesgo: bajo }
+      UNH: { rol: "entrada oportunista — revisar tesis",  nivel_riesgo: bajo }
+    candidatos_evaluar: []  # longevidad / biohacking — pendiente identificar nombres con Matías
+
+  drones_defensa:
+    tesis: "Driver de futuro declarado. Exposición hoy pequeña/temprana."
+    horizonte_venta: "temático — revisar si se consolida con más posiciones o se abandona."
+    tickers:
+      AVAV: { rol: "drones tácticos (Switchblade)", nivel_riesgo: alto }
+    candidatos_evaluar: [KTOS, RKLB]  # ya en watchlist.yaml tier2/pendientes
+
+  movilidad:
+    tesis: >
+      Ride-hailing establecido + EV + robotaxi como capas de la transición
+      de movilidad autónoma/eléctrica. Ampliado el 12 jul 2026 a pedido
+      explícito de Matías (sumó EV y robotaxi).
+    horizonte_venta: "temático — mientras la tesis de transición de movilidad viva."
+    tickers:
+      UBER: { rol: "ride-hailing establecido",  nivel_riesgo: medio }
+      TSLA: { rol: "EV",                        nivel_riesgo: medio }
+    candidatos_evaluar: [PONY]  # robotaxi, ya en watchlist.yaml tier2
+
+  energia_electrificacion:
+    tesis: >
+      Demanda eléctrica creciente (IA + EV) resuelta por múltiples fuentes.
+      Nota técnica: nuclear NO es "renovable" en taxonomía oficial (uranio
+      es combustible finito), pero sirve la MISMA tesis de electrificación/
+      demanda base que solar/eólica — por eso viven en la misma vertical.
+      CEG y VRT ya están contados en ia_pila_completa (mismo demand driver,
+      evitar doble conteo en agregaciones de % por vertical).
+    horizonte_venta: "temático — mientras la tesis de electrificación viva."
+    tickers:
+      CCJ:   { rol: "uranio (renacimiento nuclear)", nivel_riesgo: medio }
+      URNM:  { rol: "canasta uranio/nuclear",        nivel_riesgo: medio }
+      BE:    { rol: "fuel cells",                    nivel_riesgo: alto }
+
+  materiales_criticos:
+    tesis: >
+      Cadena de suministro de electrificación/EV. SQM es la posición MÁS
+      GRANDE del portafolio (litio) — entrada oportunista por precio en
+      su momento, pero Matías confirma que es tesis real (parte de la
+      cadena de electrificación), no solo residuo de una compra barata.
+    horizonte_venta: "SQM mientras tesis de electrificación/litio viva — no es candidata a trim solo por tamaño, es convicción."
+    tickers:
+      SQM:  { rol: "litio — posición #1 del portafolio",       nivel_riesgo: medio }
+      MP:   { rol: "tierras raras",                             nivel_riesgo: alto }
+      CPER: { rol: "canasta cobre",                             nivel_riesgo: medio }
+      REMX: { rol: "canasta tierras raras",                     nivel_riesgo: medio }
+
+  private_equity_credit:
+    tesis: >
+      Entrada oportunista por valoración barata en las tres (KKR/APO/ARES).
+      Simplificado el 12 jul 2026 con análisis de fundamentales (yfinance):
+      KKR = mayor escala/diversificación + menor apalancamiento (D/E 69
+      vs 101 APO vs 169 ARES) + PEG más barato. ARES = mejor crecimiento
+      orgánico (+28% ingresos) y ROE (14,2%) pero múltiplo más caro y
+      mayor apalancamiento. APO = margen neto muy bajo (3,7% vs 11,7%/
+      10,5%) y caída de ingresos más marcada — la más difícil de
+      justificar con estos datos.
+    horizonte_venta: "KKR y ARES mientras tesis de valoración/calidad viva. APO: candidata a salida."
+    tickers:
+      KKR:  { rol: "ancla — mayor escala y diversificación, menor apalancamiento", nivel_riesgo: medio }
+      ARES: { rol: "mayor crecimiento orgánico, más apalancada",                    nivel_riesgo: medio }
+    vender: [APO]  # margen neto bajo, apalancamiento alto relativo, tesis menos clara — decisión 12 jul 2026
+
+  quantum:
+    tesis: >
+      "Posición pequeña/especulativa" — declarado explícitamente así por
+      Matías en su proyecto CIO. No es tesis central, es upside asimétrico
+      de tamaño reducido a propósito.
+    horizonte_venta: "sizing pequeño a propósito — no escalar sin repensar el rol de la vertical."
+    tickers:
+      IONQ: { rol: "quantum computing", nivel_riesgo: alto }
+
+# ── CORE (interés compuesto puro, sin tesis individual necesaria) ───────────
+core:
+  tesis: "Hold para siempre. No se vende por precio, solo por rebalanceo o necesidad real de liquidez."
+  tickers: [VTI, VOO, VT, VXUS, VWO, VTV, GLDM]
+
+# ── RENTA FIJA (diversificador/protección de crisis, NO compounding) ────────
+# Confirmado por Matías: el propósito es distinto al de los índices de
+# equity. NO simplificar aunque sean 4 tickers — cada uno cubre un rol
+# de duración/inflación distinto (no es redundancia como el caso de PE).
+diversificadores_renta_fija:
+  tesis: "Ballast de portafolio — protección en crisis, no motor de retorno. Rol distinto a VOO/VTI."
+  tickers:
+    BND:   { rol: "bono amplio" }
+    IEF:   { rol: "duración media (7-10y)" }
+    VGSH:  { rol: "baja duración / bajo riesgo de tasa" }
+    SCHP:  { rol: "protección inflación (TIPS)" }
+
+# =============================================================================
+# DISCIPLINA POR NIVEL DE RIESGO — eje independiente de la vertical.
+# Determina revisión y stop-loss según QUÉ TAN RIESGOSA es la posición
+# específica, no según en qué tesis vive. Un nombre riesgoso en drones
+# recibe la misma disciplina que uno riesgoso en IA.
+# =============================================================================
+disciplina_por_riesgo:
+  alto:
+    revision_calendario_dias: 90
+    stop_loss:
+      tipo: "sigma_volatilidad_propia"
+      sigma_umbral: 2.5
+      ventana_maximo_dias: 90
+      aplica_siempre: true
+      descripcion: >
+        Se activa SIEMPRE que la posición sea nivel_riesgo=alto,
+        INDEPENDIENTE de si hoy está en ganancia o pérdida sobre costo.
+        Corrección explícita de Matías (12 jul 2026): no quería un
+        stop-loss que solo proteja posiciones ganadoras (+50%) ni que
+        solo mire pérdidas desde costo — quería protección basada en LA
+        VOLATILIDAD PROPIA de cada posición, para no perder una ganancia
+        de +200% en una burbuja igual que para no profundizar una
+        posición que va mal desde el día uno.
+  medio:
+    revision_calendario_dias: 180
+    stop_loss: null   # sin stop-loss duro; solo revisión semestral de tesis
+  bajo:
+    revision_calendario_dias: null   # sin calendario forzado — revisar solo si la tesis se rompe
+    stop_loss: null
+
+# ── POLÍTICA DE PROFIT TAKING (posiciones que duplican) ──────────────────────
 profit_taking:
   modo: "evaluar_con_contexto"
-  umbral_ganancia_pct: 100        # dispara EVALUAR cuando la posición duplica
-  # Guardrail automático: proteger utilidades cuando una ganadora se quiebra.
-  trailing_guardrail:
-    aplica_a: ["especulativo"]    # solo especulativas (las convicción se dejan correr)
-    min_ganancia_pct: 50          # solo posiciones con +50% o más
-    sigma_caida: 2.0              # caída > 2σ (vol diaria 60d escalada) desde máximo 20d
-    sugerencia: "Proteger utilidades: evaluar trim parcial o stop mental"
+  umbral_ganancia_pct: 100
+  nota: >
+    Esto es COMPLEMENTARIO a disciplina_por_riesgo, no lo reemplaza. Al
+    duplicar, se genera alerta EVALUAR con contexto de mercado — decisión
+    caso a caso (agregar, mantener, recortar), no venta mecánica.
 
-# ── EVENTOS PROGRAMADOS (fechas conocidas que requieren acción) ──────────────
+# ── EVENTOS PROGRAMADOS ───────────────────────────────────────────────────────
 eventos:
   - { ticker: VCX, fecha: "2026-09-01", tipo: "lockup_expiry", dias_aviso: 21,
       nota: "Lockup expira septiembre 2026. Premium 390% sobre NAV — VENDER antes o al vencimiento." }
+
+# ── TRIGGERS DE REVISIÓN FUTURA (condiciones que, si cambian, deben abrir una nueva conversación) ──
+triggers_revision_futura:
+  - condicion: "Matías define el sector de su emprendimiento"
+    accion: >
+      Si el sector es tech/IA: revisar el % en vertical ia_pila_completa.
+      Hoy el capital humano (carrera) no está correlacionado con el
+      portafolio financiero; si el emprendimiento termina siendo IA/tech,
+      esa correlación aparece y podría justificar reducir concentración
+      financiera en la misma tesis (diversificación de patrimonio total,
+      no solo del portafolio líquido).
+  - condicion: "El fondo de emergencia fuera del portafolio se completa"
+    accion: >
+      Hoy el portafolio cumple PARCIALMENTE rol de respaldo de liquidez.
+      Si el fondo de emergencia aparte se completa, ese doble propósito
+      desaparece y se podría relajar el mínimo de liquidez para
+      emprendimiento (ya no serviría también de red de seguridad).
+  - condicion: "Matías vive una caída de mercado real (>20% sostenido)"
+    accion: >
+      Su comportamiento en correcciones <20% (compró más) es evidencia
+      fuerte pero no probada en un bear market real. Revisar si la
+      disciplina de stop-loss/revisión trimestral necesita ajustarse
+      según cómo reaccione de verdad.

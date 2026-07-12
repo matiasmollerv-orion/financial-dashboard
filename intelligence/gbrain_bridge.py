@@ -75,8 +75,10 @@ def build_universe() -> set:
     for tier in ("tier1", "tier2", "tier3"):
         for i in wl.get("watchlist", {}).get(tier, []):
             tks.add(i["ticker"])
-    for bucket in prof.get("clasificacion", {}).values():
-        tks.update(bucket)
+    for vert in prof.get("verticales", {}).values():
+        tks.update(vert.get("tickers", {}).keys())
+    tks.update(prof.get("core", {}).get("tickers", []))
+    tks.update(prof.get("diversificadores_renta_fija", {}).get("tickers", {}).keys())
     return tks
 
 

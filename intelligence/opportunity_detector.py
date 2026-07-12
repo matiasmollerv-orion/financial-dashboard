@@ -790,7 +790,14 @@ def main():
         "portfolio_usd": portfolio_intl_usd,
         "regimen": regime["regimen"],
     }
-    especulativos = set(profile.get("clasificacion", {}).get("especulativo", []))
+    # Tickers nivel_riesgo=alto (perfil por verticales, no bucket único) —
+    # eximidos del chequeo de margen en check_fundamentals (son pre-profit
+    # por definición en su etapa, exigirles margen positivo no tiene sentido)
+    especulativos = {
+        tk for vert in profile.get("verticales", {}).values()
+        for tk, info in vert.get("tickers", {}).items()
+        if info.get("nivel_riesgo") == "alto"
+    }
 
     # Build exclusion list from watchlist.yaml
     excluded = set(wl_cfg.get("etfs_core_no_alert", []))

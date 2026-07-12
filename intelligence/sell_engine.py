@@ -1,15 +1,21 @@
 # ============================================================
-# SELL ENGINE v1 — Señales de venta / protección de utilidades
+# SELL ENGINE v2 — Señales de venta / protección de utilidades
 #
-# Lee investor_profile.yaml (perfil, límites, horizontes) y genera
+# Lee investor_profile.yaml (verticales temáticas × nivel_riesgo) y genera
 # alertas de venta que el sistema de compras NUNCA genera:
 #
 #   1. Concentración individual: posición > max_pct_posicion_individual
-#   2. Concentración por bucket: bucket > max_pct_bucket
-#   3. EVALUAR al duplicar: especulativa con +100% → contexto para decidir
-#   4. Trailing guardrail: ganadora especulativa que cae >2σ desde máximo
-#   5. Eventos programados: lockups, fechas conocidas (ej. VCX sept 2026)
-#   6. Liquidez emprendimiento: % líquido/estable < mínimo tocable
+#   2. Concentración por bucket: vertical > max_pct_bucket
+#   3. EVALUAR al duplicar: nivel_riesgo medio/alto con +100% → contexto
+#   4. Stop-loss por riesgo: nivel_riesgo=alto que cae >2.5σ desde máximo
+#      90d, SIEMPRE (gane o pierda sobre costo — no solo posiciones +50%)
+#   5. Revisión trimestral: recordatorio calendario para nivel_riesgo=alto
+#   6. Eventos programados: lockups, fechas conocidas (ej. VCX sept 2026)
+#   7. Liquidez emprendimiento: % líquido/estable < mínimo tocable
+#   8. Exposición por factor: cluster de correlación > max_pct_factor
+#
+# nivel_riesgo es independiente de la vertical temática — un nombre
+# riesgoso en drones recibe la misma disciplina que uno riesgoso en IA.
 #
 # NO vende — solo alerta. Escribe en portfolio_alerts.
 #
@@ -91,13 +97,28 @@ def yf_ticker_for(ticker: str, mercado: str) -> str:
     return ticker
 
 
-def clasificar(ticker: str, profile: dict) -> str:
-    """Bucket de horizonte del ticker según el perfil. Default: satelite."""
-    clasif = profile.get("clasificacion", {})
-    for bucket in ("core", "conviccion", "satelite", "especulativo"):
-        if ticker in clasif.get(bucket, []):
-            return bucket
-    return "satelite"
+def get_nivel_riesgo(ticker: str, profile: dict) -> str:
+    """Nivel de riesgo del ticker (alto/medio/bajo), independiente de la
+    vertical temática. 'core' para ETFs core / renta fija — se sostienen
+    para siempre, sin disciplina de stop-loss ni revisión trimestral."""
+    if ticker in profile.get("core", {}).get("tickers", []):
+        return "core"
+    if ticker in profile.get("diversificadores_renta_fija", {}).get("tickers", {}):
+        return "core"
+    for vert in profile.get("verticales", {}).values():
+        info = vert.get("tickers", {}).get(ticker)
+        if info:
+            return info.get("nivel_riesgo", "medio")
+    return "medio"  # default conservador para tickers sin vertical asignada
+
+
+def get_vertical(ticker: str, profile: dict) -> str:
+    """Nombre de la vertical temática del ticker (para contexto en mensajes).
+    None si es core/renta_fija/no clasificado."""
+    for nombre, vert in profile.get("verticales", {}).items():
+        if ticker in vert.get("tickers", {}):
+            return nombre
+    return None
 
 
 # ── 1+2. CONCENTRACIÓN ──────────────────────────────────────
@@ -105,7 +126,8 @@ def check_concentracion(df: pd.DataFrame, profile: dict) -> list:
     alerts = []
     limites = profile.get("limites", {})
     max_pos = limites.get("max_pct_posicion_individual", 12.0)
-    core_tickers = set(profile.get("clasificacion", {}).get("core", []))
+    core_tickers = (set(profile.get("core", {}).get("tickers", []))
+                   | set(profile.get("diversificadores_renta_fija", {}).get("tickers", {})))
 
     intl = df[df["mercado"].isin(["internacional", "crypto"])].copy()
     if intl.empty:
@@ -140,7 +162,9 @@ def check_concentracion(df: pd.DataFrame, profile: dict) -> list:
 
 # ── 3. EVALUAR AL DUPLICAR ──────────────────────────────────
 def check_duplicadas(df: pd.DataFrame, profile: dict, metrics_map: dict) -> list:
-    """Especulativas con ganancia > umbral → alerta EVALUAR con contexto."""
+    """Posiciones de riesgo medio/alto con ganancia > umbral → EVALUAR con
+    contexto. Riesgo bajo (mega-caps establecidas tipo NVDA/MSFT/LLY) se
+    dejan correr sin segunda-adivinanza — esa es la filosofía declarada."""
     alerts = []
     pt = profile.get("profit_taking", {})
     umbral = pt.get("umbral_ganancia_pct", 100)
@@ -149,8 +173,8 @@ def check_duplicadas(df: pd.DataFrame, profile: dict, metrics_map: dict) -> list
         tk = row["ticker"]
         if pd.isna(row.get("ganancia_pct")) or row["ganancia_pct"] < umbral:
             continue
-        if clasificar(tk, profile) not in ("especulativo", "satelite"):
-            continue  # convicción y core se dejan correr
+        if get_nivel_riesgo(tk, profile) not in ("medio", "alto"):
+            continue  # riesgo bajo y core se dejan correr
 
         m = metrics_map.get(tk, {})
         contexto = []
@@ -180,41 +204,109 @@ def check_duplicadas(df: pd.DataFrame, profile: dict, metrics_map: dict) -> list
     return alerts
 
 
-# ── 4. TRAILING GUARDRAIL ───────────────────────────────────
-def check_trailing(df: pd.DataFrame, profile: dict, metrics_map: dict) -> list:
-    """Ganadora especulativa que cae >Nσ desde su máximo de 20d → proteger."""
+# ── 4. STOP-LOSS POR RIESGO (sigma, SIEMPRE activo) ─────────
+def check_stop_loss_riesgo(df: pd.DataFrame, profile: dict, metrics_map: dict) -> list:
+    """nivel_riesgo=alto que cae >Nσ desde su máximo de 90d → alerta crítica.
+
+    Corrección explícita de Matías (12 jul 2026): NO debe depender de si la
+    posición está en ganancia o pérdida sobre costo. Protege tanto contra
+    perder una ganancia grande en una burbuja (ej. +200% en una posición
+    de IA especulativa) como contra profundizar una posición que ya iba
+    mal desde el día uno. Se mide en σ de la volatilidad PROPIA de cada
+    ticker, no en % fijo — mismo principio que usa opportunity_detector
+    para las señales de compra."""
     alerts = []
-    pt = profile.get("profit_taking", {}).get("trailing_guardrail", {})
-    aplica_a = set(pt.get("aplica_a", ["especulativo"]))
-    min_gan = pt.get("min_ganancia_pct", 50)
-    sigma_lim = pt.get("sigma_caida", 2.0)
+    disc = profile.get("disciplina_por_riesgo", {}).get("alto", {}).get("stop_loss") or {}
+    if not disc.get("aplica_siempre"):
+        return alerts
+    sigma_lim = disc.get("sigma_umbral", 2.5)
+    ventana = disc.get("ventana_maximo_dias", 90)
 
     for _, row in df.iterrows():
         tk = row["ticker"]
-        if pd.isna(row.get("ganancia_pct")) or row["ganancia_pct"] < min_gan:
-            continue
-        if clasificar(tk, profile) not in aplica_a:
+        if get_nivel_riesgo(tk, profile) != "alto":
             continue
         m = metrics_map.get(tk)
-        if not m or m.get("drawdown_sigma") is None:
+        if not m or m.get("drawdown_90d_sigma") is None:
             continue
 
-        if m["drawdown_sigma"] >= sigma_lim:
+        if m["drawdown_90d_sigma"] >= sigma_lim:
+            gan = row.get("ganancia_pct")
+            gan_str = f"ganancia {gan:+.0f}% sobre costo" if pd.notna(gan) else "sin costo base claro"
             alerts.append({
-                "categoria":  "venta_trailing",
-                "severidad":  "alta",
+                "categoria":  "venta_stop_loss",
+                "severidad":  "critica",
                 "activo":     tk,
-                "titulo":     f"PROTEGER UTILIDADES: {tk} cayó {m['drawdown_20d_pct']:.1f}% desde máximo",
-                "mensaje":    f"{tk} (ganancia {row['ganancia_pct']:+.0f}% sobre costo) cayó "
-                              f"{m['drawdown_20d_pct']:.1f}% desde su máximo de 20 días "
-                              f"= {m['drawdown_sigma']:.1f}σ de su volatilidad normal. "
-                              f"El quiebre es estadísticamente significativo, no ruido.",
-                "metricas":   {"drawdown_pct": round(m["drawdown_20d_pct"], 1),
-                               "sigma": round(m["drawdown_sigma"], 1),
-                               "ganancia_pct": round(row["ganancia_pct"], 1),
+                "titulo":     f"STOP-LOSS: {tk} cayó {m['drawdown_90d_pct']:.1f}% desde máximo {ventana}d",
+                "mensaje":    f"{tk} (riesgo alto, {gan_str}) cayó {m['drawdown_90d_pct']:.1f}% "
+                              f"desde su máximo de {ventana} días = {m['drawdown_90d_sigma']:.1f}σ "
+                              f"de su volatilidad propia. Esta alerta NO depende de si estás "
+                              f"ganando o perdiendo — se activa por quiebre estadísticamente "
+                              f"significativo en cualquier posición de riesgo alto, protegiendo "
+                              f"tanto ganancias grandes como pérdidas acumulándose.",
+                "metricas":   {"drawdown_pct": round(m["drawdown_90d_pct"], 1),
+                               "sigma": round(m["drawdown_90d_sigma"], 1),
+                               "ganancia_pct": round(gan, 1) if pd.notna(gan) else None,
                                "valor_usd": round(row["valor_usd"], 0)},
-                "sugerencia": pt.get("sugerencia", "Evaluar trim parcial o stop mental."),
+                "sugerencia": "Evaluar salida o trim significativo. Quiebre estadístico real "
+                              "en posición de riesgo alto — revisar si la tesis sigue viva "
+                              "antes de decidir, pero no ignorar la señal.",
             })
+    return alerts
+
+
+# ── 5b. REVISIÓN TRIMESTRAL (calendario, riesgo alto) ───────
+def check_revision_trimestral(df: pd.DataFrame, profile: dict) -> list:
+    """Recordatorio cada ~90 días para nivel_riesgo=alto, independiente del
+    precio: 'revisa la tesis de X'. Usa la última alerta de esta categoría
+    en portfolio_alerts como proxy de 'última revisión'."""
+    alerts = []
+    dias_ciclo = (profile.get("disciplina_por_riesgo", {}).get("alto", {})
+                 .get("revision_calendario_dias", 90))
+    hoy = date.today()
+
+    riesgo_alto = [row["ticker"] for _, row in df.iterrows()
+                  if get_nivel_riesgo(row["ticker"], profile) == "alto"]
+    if not riesgo_alto:
+        return alerts
+
+    sb = get_client()
+    ultima = {}
+    try:
+        r = (sb.table("portfolio_alerts").select("activo,fecha_alerta")
+             .eq("categoria", "revision_trimestral")
+             .in_("activo", riesgo_alto)
+             .order("fecha_alerta", desc=True).execute())
+        for row in r.data:
+            ultima.setdefault(row["activo"], row["fecha_alerta"])
+    except Exception:
+        pass
+
+    for _, row in df.iterrows():
+        tk = row["ticker"]
+        if get_nivel_riesgo(tk, profile) != "alto":
+            continue
+        last = ultima.get(tk)
+        if last:
+            try:
+                last_date = datetime.fromisoformat(last.replace("Z", "+00:00")).date()
+                if (hoy - last_date).days < dias_ciclo:
+                    continue
+            except Exception:
+                pass
+        vertical = get_vertical(tk, profile) or "sin vertical asignada"
+        alerts.append({
+            "categoria":  "revision_trimestral",
+            "severidad":  "media",
+            "activo":     tk,
+            "titulo":     f"REVISIÓN TRIMESTRAL: {tk}",
+            "mensaje":    f"{tk} (vertical: {vertical}, riesgo alto) no se revisa hace "
+                          f"{dias_ciclo}+ días. Confirma si la tesis sigue viva: ¿cambió algo "
+                          f"en la industria, la competencia, o los fundamentales de la empresa?",
+            "metricas":   {"vertical": vertical, "ciclo_dias": dias_ciclo,
+                           "valor_usd": round(row["valor_usd"], 0)},
+            "sugerencia": "Revisar tesis: mantener, agregar, o recortar según convicción actual.",
+        })
     return alerts
 
 
@@ -292,7 +384,8 @@ def check_factor_exposure(df: pd.DataFrame, profile: dict, force: bool = False) 
     # Posiciones internacionales relevantes (> USD 500), EXCLUYENDO ETFs core:
     # el core ES el factor mercado (diversificado por construcción) — incluirlo
     # hace que todo clusterice con VOO y esconde las apuestas temáticas reales
-    core = set(profile.get("clasificacion", {}).get("core", []))
+    core = (set(profile.get("core", {}).get("tickers", []))
+           | set(profile.get("diversificadores_renta_fija", {}).get("tickers", {})))
     pos = df[(df["mercado"] == "internacional") & (df["valor_usd"] > 500)
              & (~df["ticker"].isin(core))].copy()
     if len(pos) < 5:
@@ -362,16 +455,22 @@ def check_factor_exposure(df: pd.DataFrame, profile: dict, force: bool = False) 
     return alerts
 
 
-# ── MARKET METRICS (para contexto de duplicadas y trailing) ─
+# ── MARKET METRICS (para contexto de duplicadas y stop-loss) ─
 def fetch_metrics(df: pd.DataFrame, profile: dict) -> dict:
-    """Descarga 6m de historia solo para tickers que necesitan contexto:
-    especulativas/satélites con ganancia > 50%."""
+    """Descarga 6m de historia para tickers que necesitan contexto:
+    - nivel_riesgo=alto: SIEMPRE (el stop-loss no depende de ganancia/pérdida)
+    - nivel_riesgo=medio con ganancia >= umbral: para el check de duplicadas
+    """
+    umbral = profile.get("profit_taking", {}).get("umbral_ganancia_pct", 100)
     candidatos = []
     for _, row in df.iterrows():
         tk = row["ticker"]
-        if tk == "PORTFOLIO_CL" or pd.isna(row.get("ganancia_pct")):
+        if tk == "PORTFOLIO_CL":
             continue
-        if row["ganancia_pct"] >= 50 and clasificar(tk, profile) in ("especulativo", "satelite"):
+        nivel = get_nivel_riesgo(tk, profile)
+        gan = row.get("ganancia_pct")
+        necesita = (nivel == "alto") or (nivel == "medio" and pd.notna(gan) and gan >= umbral)
+        if necesita:
             candidatos.append((tk, row.get("mercado", "internacional")))
 
     if not candidatos:
@@ -412,11 +511,21 @@ def fetch_metrics(df: pd.DataFrame, profile: dict) -> dict:
             sigma_20d = vol_d * np.sqrt(20) * 100  # en %
             dd_sigma = abs(dd_pct) / sigma_20d if sigma_20d > 0 else None
 
+            # Ventana 90d para el stop-loss por riesgo (SIEMPRE activo,
+            # independiente de ganancia/pérdida — ver check_stop_loss_riesgo)
+            ventana90 = min(90, len(close))
+            max_90d = float(close.tail(ventana90).max())
+            dd90_pct = (p / max_90d - 1) * 100
+            sigma_90d = vol_d * np.sqrt(ventana90) * 100
+            dd90_sigma = abs(dd90_pct) / sigma_90d if sigma_90d > 0 else None
+
             ath = float(close.max())
             m = {
                 "precio_actual": p,
                 "drawdown_20d_pct": dd_pct,
                 "drawdown_sigma": dd_sigma if dd_pct < 0 else 0.0,
+                "drawdown_90d_pct": dd90_pct,
+                "drawdown_90d_sigma": dd90_sigma if dd90_pct < 0 else 0.0,
                 "pct_from_ath": (p / ath - 1) * 100,
                 "pct_20d": (p / float(close.iloc[-min(21, len(close))]) - 1) * 100,
                 "volume_ratio": None,
@@ -432,9 +541,9 @@ def fetch_metrics(df: pd.DataFrame, profile: dict) -> dict:
 
 
 # ── SAVE ────────────────────────────────────────────────────
-OWNED_CATEGORIES = ["venta_concentracion", "venta_trailing", "venta_evaluar",
+OWNED_CATEGORIES = ["venta_concentracion", "venta_stop_loss", "venta_evaluar",
                     "evento_programado", "liquidez_emprendimiento",
-                    "factor_concentracion"]
+                    "factor_concentracion", "revision_trimestral"]
 
 
 def save_alerts(alerts: list) -> dict:
@@ -470,7 +579,7 @@ def main():
     args = parser.parse_args()
 
     print("=" * 60)
-    print("SELL ENGINE v1 — Señales de venta y protección")
+    print("SELL ENGINE v2 — Señales de venta y protección")
     print("=" * 60)
 
     profile = load_profile()
@@ -484,7 +593,7 @@ def main():
     total = df["valor_usd"].sum()
     print(f"Cartera: {len(df)} posiciones, USD {total:,.0f} total")
 
-    print("\nDescargando contexto de mercado para ganadoras...")
+    print("\nDescargando contexto de mercado (riesgo alto + ganadoras medias)...")
     metrics_map = fetch_metrics(df, profile)
     print(f"  {len(metrics_map)} tickers con contexto")
 
@@ -492,7 +601,8 @@ def main():
     checks = [
         ("Concentración", lambda: check_concentracion(df, profile)),
         ("Duplicadas (EVALUAR)", lambda: check_duplicadas(df, profile, metrics_map)),
-        ("Trailing guardrail", lambda: check_trailing(df, profile, metrics_map)),
+        ("Stop-loss por riesgo (sigma, siempre activo)", lambda: check_stop_loss_riesgo(df, profile, metrics_map)),
+        ("Revisión trimestral (riesgo alto)", lambda: check_revision_trimestral(df, profile)),
         ("Eventos programados", lambda: check_eventos(profile)),
         ("Liquidez emprendimiento", lambda: check_liquidez(df, profile)),
         ("Exposición por factor (lunes)", lambda: check_factor_exposure(df, profile)),
