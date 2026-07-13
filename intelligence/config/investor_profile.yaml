@@ -93,6 +93,8 @@ verticales:
       declarada por Matías — no apuesta de qué modelo gana, apuesta a la
       infraestructura que todos necesitan.
     horizonte_venta: "mientras la tesis viva; sin fecha de venta por calendario. Sale solo si la tesis se rompe."
+    palabras_clave: ["GPU", "AI accelerator", "custom silicon", "HBM memory",
+                     "neocloud", "AI datacenter", "inference chip", "AI infrastructure"]
     tickers:
       NVDA:  { rol: "GPU",                          nivel_riesgo: bajo }
       TSM:   { rol: "foundry",                       nivel_riesgo: bajo }
@@ -116,6 +118,8 @@ verticales:
       Matías — fintech LatAm escalando con ROE alto. MELI expresa
       ecommerce + fintech regional (Mercado Pago).
     horizonte_venta: "mientras la tesis viva. NU no es candidata a venta salvo ruptura de tesis."
+    palabras_clave: ["digital bank", "fintech Latin America", "neobank",
+                     "payments platform Brazil", "digital wallet LatAm"]
     tickers:
       NU:   { rol: "alta convicción declarada — fintech LatAm", nivel_riesgo: medio }
       MELI: { rol: "ecommerce + fintech regional",              nivel_riesgo: medio }
@@ -127,6 +131,8 @@ verticales:
       Interés declarado en sumar apuestas más innovadoras de longevidad/
       biohacking; sin candidatos identificados todavía.
     horizonte_venta: "LLY mientras tesis GLP-1 viva. UNH sujeta a revisión de si la tesis original (precio) sigue siendo la razón de tenerla."
+    palabras_clave: ["GLP-1", "weight loss drug", "longevity biotech",
+                     "anti-aging therapeutics", "obesity treatment"]
     tickers:
       LLY: { rol: "líder GLP-1, convicción real",        nivel_riesgo: bajo }
       UNH: { rol: "entrada oportunista — revisar tesis",  nivel_riesgo: bajo }
@@ -135,6 +141,8 @@ verticales:
   drones_defensa:
     tesis: "Driver de futuro declarado. Exposición hoy pequeña/temprana."
     horizonte_venta: "temático — revisar si se consolida con más posiciones o se abandona."
+    palabras_clave: ["tactical drone", "autonomous defense", "military drone",
+                     "counter-UAS", "unmanned aerial vehicle defense"]
     tickers:
       AVAV: { rol: "drones tácticos (Switchblade)", nivel_riesgo: alto }
     candidatos_evaluar: [KTOS, RKLB]  # ya en watchlist.yaml tier2/pendientes
@@ -145,6 +153,8 @@ verticales:
       de movilidad autónoma/eléctrica. Ampliado el 12 jul 2026 a pedido
       explícito de Matías (sumó EV y robotaxi).
     horizonte_venta: "temático — mientras la tesis de transición de movilidad viva."
+    palabras_clave: ["robotaxi", "autonomous vehicle", "self-driving",
+                     "electric vehicle startup", "EV maker"]
     tickers:
       UBER: { rol: "ride-hailing establecido",  nivel_riesgo: medio }
       TSLA: { rol: "EV",                        nivel_riesgo: medio }
@@ -159,6 +169,8 @@ verticales:
       CEG y VRT ya están contados en ia_pila_completa (mismo demand driver,
       evitar doble conteo en agregaciones de % por vertical).
     horizonte_venta: "temático — mientras la tesis de electrificación viva."
+    palabras_clave: ["small modular reactor", "nuclear fuel", "grid storage",
+                     "data center power", "fuel cell energy"]
     tickers:
       CCJ:   { rol: "uranio (renacimiento nuclear)", nivel_riesgo: medio }
       URNM:  { rol: "canasta uranio/nuclear",        nivel_riesgo: medio }
@@ -171,6 +183,8 @@ verticales:
       su momento, pero Matías confirma que es tesis real (parte de la
       cadena de electrificación), no solo residuo de una compra barata.
     horizonte_venta: "SQM mientras tesis de electrificación/litio viva — no es candidata a trim solo por tamaño, es convicción."
+    palabras_clave: ["lithium mining", "rare earth elements", "critical minerals",
+                     "battery materials", "copper supply"]
     tickers:
       SQM:  { rol: "litio — posición #1 del portafolio",       nivel_riesgo: medio }
       MP:   { rol: "tierras raras",                             nivel_riesgo: alto }
@@ -188,6 +202,8 @@ verticales:
       10,5%) y caída de ingresos más marcada — la más difícil de
       justificar con estos datos.
     horizonte_venta: "KKR y ARES mientras tesis de valoración/calidad viva. APO: candidata a salida."
+    palabras_clave: ["private equity firm", "alternative asset manager",
+                     "private credit fund"]
     tickers:
       KKR:  { rol: "ancla — mayor escala y diversificación, menor apalancamiento", nivel_riesgo: medio }
       ARES: { rol: "mayor crecimiento orgánico, más apalancada",                    nivel_riesgo: medio }
@@ -199,6 +215,8 @@ verticales:
       Matías en su proyecto CIO. No es tesis central, es upside asimétrico
       de tamaño reducido a propósito.
     horizonte_venta: "sizing pequeño a propósito — no escalar sin repensar el rol de la vertical."
+    palabras_clave: ["quantum computing", "qubit", "quantum advantage",
+                     "quantum error correction"]
     tickers:
       IONQ: { rol: "quantum computing", nivel_riesgo: alto }
 

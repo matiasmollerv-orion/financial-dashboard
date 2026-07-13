@@ -124,8 +124,23 @@ def sync_newsletters(days: int, dry_run: bool) -> int:
     if not candidates:
         return 0
 
+    # Setup para descubrimiento de tickers NUEVOS (fuera del universo conocido)
+    # — reutiliza el mismo contenido ya leído, sin llamadas extra al brain.
+    try:
+        from intelligence.discovery import (
+            extract_cashtags, load_sec_ticker_map, filter_mega_caps,
+            load_sec_name_index, extract_company_mentions,
+        )
+        sec_map = load_sec_ticker_map()
+        name_index = load_sec_name_index()
+        descubrir = True
+    except Exception as e:
+        print(f"  Descubrimiento desactivado (error importando discovery: {str(e)[:60]})")
+        sec_map, name_index, descubrir = {}, {}, False
+
     sb = get_client()
     inserted = 0
+    hallazgos = {}  # ticker -> {"apariciones": [(slug, title), ...], "via_cashtag": bool}
     for slug, updated, title in candidates:
         url = f"gbrain://{slug}"
         # Dedupe por URL
@@ -140,6 +155,17 @@ def sync_newsletters(days: int, dry_run: bool) -> int:
         if not content:
             continue
         tickers = extract_tickers(content, universe)
+
+        if descubrir:
+            for tk in extract_cashtags(content):
+                if tk not in universe and tk in sec_map:
+                    h = hallazgos.setdefault(tk, {"apariciones": [], "via_cashtag": False})
+                    h["apariciones"].append((slug, title))
+                    h["via_cashtag"] = True
+            for tk in extract_company_mentions(content, name_index, universe):
+                h = hallazgos.setdefault(tk, {"apariciones": [], "via_cashtag": False})
+                h["apariciones"].append((slug, title))
+
         # Relevancia: base 30 si es financiera, +12 por ticker del universo
         es_financiera = any(k in slug for k in ("revolution", "chamath", "macro", "invers"))
         relevancia = (30 if es_financiera else 15) + 12 * len(tickers)
@@ -167,6 +193,43 @@ def sync_newsletters(days: int, dry_run: bool) -> int:
             print(f"    + {slug} → {tickers}")
         except Exception as e:
             print(f"    {slug}: {str(e)[:80]}")
+
+    if descubrir and hallazgos:
+        # Cashtag: basta 1 mención (señal fuerte). Solo nombre: exigir 2+
+        # (frases de 2+ palabras ya filtran mucho ruido, pero se pide
+        # repetición igual que en discovery.py para consistencia).
+        candidatos = {tk: h for tk, h in hallazgos.items()
+                     if h["via_cashtag"] or len(h["apariciones"]) >= 2}
+        no_mega = filter_mega_caps(set(candidatos.keys()))
+        alerts = []
+        for tk, h in candidatos.items():
+            if tk not in no_mega:
+                continue
+            apariciones = h["apariciones"]
+            slug, title = apariciones[0]
+            alerts.append({
+                "categoria":  "descubrimiento",
+                "severidad":  "info",
+                "activo":     tk,
+                "titulo":     f"NUEVA MENCIÓN: {sec_map.get(tk, tk)[:40]} (${tk})",
+                "mensaje":    f"${tk} ({sec_map.get(tk, '?')}) mencionado en tu newsletter "
+                              f"'{title}', no está en tu watchlist. "
+                              f"{len(apariciones)} newsletter(s) reciente(s) lo mencionan.",
+                "metricas":   {"fuente": "gbrain_newsletter", "menciones": len(apariciones),
+                               "empresa": sec_map.get(tk, "?"), "slug_ejemplo": slug},
+                "sugerencia": "Evaluar si merece incorporarse a la watchlist.",
+            })
+        print(f"  Descubrimientos en newsletters: {len(alerts)}")
+        if alerts and not dry_run:
+            try:
+                for a in alerts:
+                    sb.table("portfolio_alerts").insert(a).execute()
+            except Exception as e:
+                print(f"    Error guardando descubrimientos: {str(e)[:80]}")
+        elif alerts:
+            for a in alerts:
+                print(f"    [DRY] {a['titulo']}")
+
     return inserted
 
 

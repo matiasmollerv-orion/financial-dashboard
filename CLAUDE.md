@@ -73,7 +73,9 @@ intelligence/
   edgar_monitor.py    ← v1: SEC EDGAR — Form 4 insider buys/clusters, 8-K materiales, 13F smart money diff
   earnings_radar.py   ← v1: aviso 5 días ANTES de earnings de posiciones grandes + tier1
   alert_outcomes.py   ← v1: feedback loop — retorno forward +5/20/60d en metricas de cada alerta; --scorecard
-  gbrain_bridge.py    ← v1: SOLO LOCAL (LaunchAgent) — newsletters GBrain → market_news; alertas → brain
+  gbrain_bridge.py    ← v2: SOLO LOCAL (LaunchAgent) — newsletters GBrain → market_news + descubrimiento de tickers nuevos (cashtags + nombre de empresa); alertas → brain
+  discovery.py        ← v1: SEMANAL — visibilidad de jugadores FUERA del universo conocido: 13F no reconocidos, escáner IPOs (SEC EDGAR full-text-search por palabras_clave), menciones nuevas en market_news
+  discovery_report.py ← v1: digest semanal de descubrimientos, separado del email diario
   backtest_rules.py   ← v1: backtest ad-hoc de reglas dip/RSI2 vs baseline (NO en workflow)
   ai_analyst.py       ← v2: Claude analiza noticias (DESACTIVADO en workflow por costo API)
   daily_brief.py      ← v2: Max 5 alertas accionables (DESACTIVADO en workflow por costo API)
@@ -273,7 +275,23 @@ Pipeline diario: news_fetcher → ai_analyst → opportunity_detector → daily_
 6. `alert_outcomes`: registra retornos forward de cada alerta (feedback loop; `--scorecard` para calibración)
 7. `report_builder` + `email_sender`: email diario
 
-LOCAL (LaunchAgent 7am, run_weekly_update.sh): `gbrain_bridge` — newsletters del brain → market_news (alimenta el score compuesto) y alertas activas → página finanzas/alertas-sistema del brain.
+LOCAL (LaunchAgent 7am, run_weekly_update.sh): `gbrain_bridge` — newsletters del brain → market_news (alimenta el score compuesto) y alertas activas → página finanzas/alertas-sistema del brain. También detecta tickers NUEVOS mencionados en newsletters (fuera del universo conocido) → categoria=descubrimiento.
+
+### 🔭 Discovery — visibilidad de jugadores nuevos (workflow discovery-weekly.yml, lunes 9am)
+El resto del sistema es ciego por diseño (solo ve tickers que YA conoce). Discovery invierte
+esa lógica — busca activamente lo que NO se conoce, en 3 fuentes cloud + 1 local:
+1. `discovery.py --days 8`: 13F de smart money con emisor NO reconocido (match_ticker
+   devuelve None) + escáner de IPOs nuevos (SEC EDGAR full-text-search sobre S-1, por
+   `palabras_clave` de cada vertical en investor_profile.yaml) + menciones nuevas en
+   market_news ya recolectado (cashtags $TICKER + matching de nombre de empresa contra
+   la lista oficial SEC, exigiendo 2+ palabras consecutivas capitalizadas para evitar
+   falsos positivos de titulares en Title Case, y filtrando mega-caps >USD 30B — esas
+   no son "descubrimientos", ya se conocen)
+2. `gbrain_bridge.sync_newsletters` (local): mismo mecanismo aplicado al contenido de
+   newsletters, sin llamadas extra al brain (reutiliza el contenido ya leído)
+3. `discovery_report.py --days 8`: digest semanal separado del email diario (categoria
+   descubrimiento, severidad SIEMPRE "info" — NO es señal de compra, es "esto existe, evalúalo")
+Costo: $0 (SEC EDGAR + yfinance + Supabase, sin API de Anthropic).
 
 ### 🩺 Auto-auditoría del pipeline (detecta fallas silenciosas)
 - Tabla `pipeline_stats`: cada paso del workflow va envuelto en
