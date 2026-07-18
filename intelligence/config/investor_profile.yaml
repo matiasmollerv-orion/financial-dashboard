@@ -220,6 +220,68 @@ verticales:
     tickers:
       IONQ: { rol: "quantum computing", nivel_riesgo: alto }
 
+# =============================================================================
+# CRITERIOS DE VENTA — política formal, ORDENADA, para evitar recomendaciones
+# inconsistentes. Construida el 15 jul 2026 después de un error real: se
+# recomendó vender PANW (fundamentalmente MEJOR que CRWD: P/E 45x vs 91x,
+# margen FCF 37,6% vs 25,7%) y quedarse con CRWD, usando el momentum técnico
+# de PANW como argumento — una contradicción lógica, no una decisión de
+# inversión. Basado en investigación real (no inventado):
+#   - Peter Lynch: "rotación" — vender por una historia similar pero PEOR,
+#     nunca la mejor. Señales objetivas de sobrevaloración: PEG >> 1,
+#     crecimiento desacelerando, TAM encogiéndose, márgenes comprimiéndose.
+#   - William O'Neil: vender por razones OBJETIVAS, nunca por nervios u
+#     opinión. Corte defensivo de pérdidas ~7-8% bajo costo si la tesis
+#     falla. Toma de ganancias parcial (25-30%) solo si el momentum se
+#     está frenando DESPUÉS de una extensión fuerte — nunca solo "subió".
+#   - Práctica institucional (comités de inversión): criterios escritos,
+#     explícitos, aplicados en el mismo orden siempre — no ad-hoc.
+# =============================================================================
+criterios_venta:
+  regla_explicita_matias: >
+    "No vendo solo por rentabilidad, a no ser que la industria o mi tesis ya
+    no tenga sentido en esa posición, o que sea clarísimo que hay que vender
+    para tomar ganancias." (confirmado 15 jul 2026)
+
+  orden_de_evaluacion:
+    1_tesis_rota:
+      pregunta: "¿La industria o la razón original por la que compré esta posición sigue siendo válida?"
+      accion_si_no: "VENDER, sin importar el timing técnico. Esto pesa más que cualquier otro criterio."
+
+    2_toma_de_ganancias_objetiva:
+      pregunta: >
+        ¿Hay una señal OBJETIVA de que es momento de tomar ganancias?
+        NO cuenta: "subió mucho", "está cerca de su máximo", "tiene RSI alto"
+        POR SÍ SOLOS — eso es fortaleza, no una señal de venta (O'Neil: "si
+        se comporta bien, deja correr el resto"). SÍ cuenta: valoración
+        desconectada de fundamentales (PEG >> 1 con crecimiento
+        desacelerando), o la posición extendida Y mostrando signos reales
+        de agotamiento (no solo "está arriba").
+      accion_si_si: "Considerar toma de ganancias parcial (25-30%), no venta total automática."
+
+    3_solapamiento_con_mayor_conviccion:
+      pregunta: >
+        ¿Esta posición cumple el MISMO rol/tesis que otra posición de mayor
+        convicción declarada? Si sí: comparar AMBAS en LOS MISMOS criterios
+        (P/E, margen, crecimiento, ROE — no solo una narrativa) y quedarse
+        con la que gane la comparación real. NUNCA vender la que gana la
+        comparación solo porque tiene mejor momentum técnico — el timing
+        técnico no pesa más que los fundamentales en esta decisión.
+      accion_si_si: "Vender la posición que pierde la comparación directa, no la que gana."
+
+  regla_de_oro_timing_tecnico: >
+    RSI, momentum y distancia del máximo de 52 semanas SOLO sirven para
+    decidir CUÁNDO ejecutar una venta ya justificada por 1, 2 o 3 — nunca
+    para decidir SI vender. El timing técnico es una herramienta de
+    ejecución, no de decisión.
+
+  prohibido:
+    - "Vender algo solo porque no está en mi watchlist/verticales declaradas."
+    - "Vender algo solo porque duplica otra posición, sin comparar cuál es mejor."
+    - "Usar 'tiene ganancia acumulada' como razón por sí sola."
+    - "Recomendar vender A y quedarse con B si B pierde la comparación directa en fundamentales."
+
+
 # ── CORE (interés compuesto puro, sin tesis individual necesaria) ───────────
 core:
   tesis: "Hold para siempre. No se vende por precio, solo por rebalanceo o necesidad real de liquidez."
