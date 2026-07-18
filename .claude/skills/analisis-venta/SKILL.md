@@ -58,6 +58,20 @@ o "el pick de GLP-1"):
      Si el momentum técnico de la que gana es fuerte, eso es una razón
      para venderla MENOS, no más.
 
+### 4. Si NO pasa por 1-3: ¿es bueno por mérito propio?
+Corrección del 15 jul 2026: "no es una convicción declarada" es condición
+NECESARIA pero NO SUFICIENTE para mantener algo — falta evaluar si el
+activo es atractivo POR SÍ SOLO, con datos reales de crecimiento
+proyectado, valoración vs historia/peers, calidad del sector/factor, y si
+pasó algo puntual que cambió la historia. Fundamentales débiles o evento
+puntual negativo → vender, aunque no haya "regla" que lo obligue. Esto NO
+es binario ("no declarada" ≠ automático mantener ni automático vender) —
+exige juicio informado por datos reales (yfinance, WebSearch), no una
+casilla de verificación. Revisa primero `criterios_venta.orden_de_evaluacion
+.4_calidad_y_potencial_independiente.posiciones_evaluadas` en
+investor_profile.yaml — si el ticker ya fue evaluado, no repitas el
+análisis desde cero, solo verifica si algo material cambió desde esa fecha.
+
 ## Uso del timing técnico (RSI, momentum, distancia de máximo)
 
 Solo entra DESPUÉS de que 1, 2 o 3 ya justificaron una venta. Sirve para
