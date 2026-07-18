@@ -11,6 +11,12 @@ name: Weekly Discovery Scan
 #   2. Escáner de IPOs (SEC EDGAR full-text-search sobre S-1 nuevos)
 #   3. Menciones nuevas en noticias ya recolectadas (market_news)
 #
+# También corre aquí el sistema de alerta temprana (early_warning.py) para
+# las posiciones core de IA — 5 señales líder combinadas (valoración,
+# divergencia RSI, debilidad sectorial, 13F en cluster, régimen de
+# mercado). Si dispara, la alerta queda activa y aparece en el email
+# diario también, no solo en este digest semanal.
+#
 # CERO llamadas a la API de Anthropic — solo SEC EDGAR + yfinance + Supabase.
 
 on:
@@ -49,4 +55,8 @@ jobs:
 
       - name: Send weekly discovery digest
         run: python -m intelligence.pipeline_stats --script discovery_report -- python -m intelligence.discovery_report --days 8
+        continue-on-error: true
+
+      - name: Early warning — core AI positions (5 leading signals)
+        run: python -m intelligence.pipeline_stats --script early_warning --table portfolio_alerts -- python -m intelligence.early_warning
         continue-on-error: true

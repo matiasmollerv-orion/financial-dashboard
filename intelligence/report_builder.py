@@ -131,6 +131,8 @@ def load_raw_opportunity_alerts(max_alerts: int = 5) -> list:
         # Señales informacionales (edgar_monitor + earnings_radar)
         "insider_cluster", "insider_buy", "smart_money_13f", "sec_8k",
         "earnings_proximos", "target_recalibrar",
+        # Alerta temprana core IA (early_warning.py) — 5 señales líder combinadas
+        "alerta_temprana",
     ]
     all_alerts = []
     for cat in actionable_cats:
@@ -189,6 +191,7 @@ def load_raw_opportunity_alerts(max_alerts: int = 5) -> list:
         "sec_8k": "EVENTO SEC",
         "earnings_proximos": "EARNINGS",
         "target_recalibrar": "RECALIBRAR",
+        "alerta_temprana": "ALERTA TEMPRANA",
     }
     for i, a in enumerate(all_alerts[:max_alerts], 1):
         metricas = a.get("metricas") or {}

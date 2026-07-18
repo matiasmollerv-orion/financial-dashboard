@@ -294,7 +294,7 @@ criterios_venta:
         SCHH: { veredicto: mantener, motivo: "REITs girando con baja de tasas, sector superando al mercado en 2026; REITs de datacenter ligados al mismo driver de demanda IA que la tesis central" }
         IGF:  { veredicto: mantener, motivo: "mejor promedio 3y del grupo (16.1%), ligado a electrificación" }
         QUAL: { veredicto: mantener, motivo: "retornos sólidos consistentes (17.7% 3y), sin señales de alerta — caso limpio aunque sin catalizador narrativo fuerte" }
-        RSP:  { veredicto: vender, motivo: "por diseño subpondera las mega-caps IA que son la convicción más fuerte declarada — rinde peor que cap-weighted en este ciclo por esa razón estructural, no solo falta de catalizador" }
+        RSP:  { veredicto: "mantener — CORREGIDO 15 jul 2026", motivo: "Matías confirmó que la incorporó a su plan recurrente a fines de 2025 específicamente para reducir exposición a las 7 magníficas (hedge deliberado de concentración, no accidente). Que rinda peor que cap-weighted durante el rally de IA es exactamente lo que se espera de un hedge cuando funciona — no es un defecto. Veredicto anterior de 'vender' estaba mal fundamentado, revertido." }
         IQLT: { veredicto: vender, motivo: "más débil del grupo (13.8% 3y, 7.8% 5y), internacional no ha acompañado en ciclo liderado por EEUU, y VXUS ya es el core internacional declarado" }
         ITUB: { veredicto: "zona gris — mantener sin urgencia", motivo: "barata (P/E 8.3x) y rentable (margen 33%, ROE 22%) pero crecimiento de ingresos levemente negativo y upside de analistas modesto (+7.8%). Posición chica, sin catalizador claro en ninguna dirección" }
         PICK: { veredicto: "zona gris — vigilar, no vender aún", motivo: "promedio histórico sólido (13.7% 3y) pero deterioro reciente real (-14.8% desde máximo) — revisar si se estabiliza o si el evento puntual se agrava" }
@@ -358,6 +358,68 @@ disciplina_por_riesgo:
   bajo:
     revision_calendario_dias: null   # sin calendario forzado — revisar solo si la tesis se rompe
     stop_loss: null
+
+# =============================================================================
+# SISTEMA DE ALERTA TEMPRANA — protección contra burbuja IA / crisis sistémica
+# Construido 15 jul 2026 tras pedido explícito de Matías. Investigación real
+# (no inventada) detrás de cada señal:
+#
+#   - Credit spreads + curva + VIX: sistema de 3 señales da 4-8 MESES de
+#     anticipación antes de una corrección mayor (Fed Reserve research,
+#     Real Investment Advice). Ya implementado en market_regime.py.
+#   - Divergencia RSI (precio nuevo máximo, RSI no confirma): señal líder
+#     real pero "rara vez efectiva sola" — necesita combinarse con otras
+#     (evidencia de backtesting, no académica formal).
+#   - 13F institucional en AGREGADO (no insider individual): "13F Sentiment
+#     Signal" tiene +12%/año de alpha documentado, Sharpe 0.83, 2007-2024
+#     (estudio citado). Pero tiene ~46 días de rezago — sirve para detectar
+#     CAMBIO DE TESIS estructural, no timing fino.
+#   - Venta de INSIDERS INDIVIDUALES: DESCARTADA a propósito. Evidencia
+#     académica (Lakonishok & Lee y otros) muestra que insiders venden por
+#     razones no informativas (diversificación, impuestos, planes 10b5-1
+#     preprogramados) — señal débil, no se usa. Solo se usa el AGREGADO de
+#     múltiples fondos smart money reduciendo la MISMA posición.
+#
+# Corrección crítica de Matías (15 jul 2026): NO hay umbral de ganancia
+# mínima para activar esto. Si la tesis se está rompiendo y todo cae, vender
+# y recomprar más abajo es válido AUNQUE la posición esté en pérdida sobre
+# costo — la lógica de "cortar y esperar mejor precio" no depende del costo
+# histórico. Aplica siempre, gane o pierda (mismo principio que el
+# stop-loss de riesgo alto).
+# =============================================================================
+sistema_alerta_temprana:
+  aplica_a: [NVDA, GOOGL, MSFT, TSM, ASML]   # core IA — los más ligados a la tesis que preocupa
+  cadencia: semanal
+  filosofia: >
+    Ninguna señal dispara sola una recomendación de venta — son señales
+    LÍDER combinadas en un score compuesto, no un stop-loss reactivo.
+    El objetivo es anticipar, no confirmar después de que el precio ya
+    cayó. Cuando 2+ señales se prenden juntas para una posición, se alerta
+    para que Matías decida con información temprana — el sistema no
+    vende automático.
+
+  senales:
+    valoracion_estirada:
+      que_mide: "P/E actual vs banda histórica propia del ticker (percentil)"
+      peso: 1
+    divergencia_momentum:
+      que_mide: "Precio hace nuevo máximo de N días pero RSI(14) no confirma (máximo más bajo)"
+      peso: 1
+      nota: "Señal líder real pero ruidosa sola — por eso pesa igual que las demás, nunca decide sola"
+    debilidad_sectorial_temprana:
+      que_mide: "Pares del mismo rol en la vertical (ej. TSM/AMD/ASML/MU para NVDA) mostrando deterioro aunque el ticker principal aún no"
+      peso: 1
+    reduccion_13f_cluster:
+      que_mide: "2+ de los 15 fondos smart money (watchlist.yaml) reduciendo o cerrando la MISMA posición en la misma ventana de filing"
+      peso: 1.5   # mayor peso — tiene el respaldo empírico más fuerte (+12%/año, Sharpe 0.83)
+      nota: "Rezago ~46 días — señal de cambio de tesis estructural, no de timing fino"
+    regimen_mercado:
+      que_mide: "market_regime.py vira a neutral o risk_off"
+      peso: 1.5   # mayor peso — 4-8 meses de anticipación documentados
+      nota: "Reutiliza intelligence/market_regime.py, ya construido"
+
+  umbral_alerta: 2.5   # suma de pesos de señales activas — alerta si se cruza
+  sin_gate_de_ganancia: true   # aplica gane o pierda la posición, sin excepción
 
 # ── POLÍTICA DE PROFIT TAKING (posiciones que duplican) ──────────────────────
 profit_taking:
