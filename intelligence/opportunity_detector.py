@@ -101,6 +101,18 @@ def monto_por_riesgo(vol_diaria_pct, sizing: dict, portfolio_usd: float,
     return (lo, hi)
 
 
+def fmt_monto_riesgo(lo: int, hi: int, sizing: dict) -> str:
+    """Formatea el monto evitando el rango degenerado 'USD 1000-1000':
+    eso pasa cuando el sizing por volatilidad pide MÁS que el tope mensual
+    disponible — no es un error, pero mostrar un rango falso confunde."""
+    hi_max = sizing.get("monto_max_usd", 1000) if sizing else 1000
+    if lo == hi:
+        if hi >= hi_max:
+            return f"USD {hi} (tope de tu presupuesto mensual — el sizing por volatilidad pediría más)"
+        return f"USD {hi}"
+    return f"USD {lo}-{hi}"
+
+
 # ── GATE FUNDAMENTAL (anti-cuchillo-cayendo) ────────────────
 def check_fundamentals(ticker: str, especulativos: set) -> dict:
     """Chequeo barato de deterioro fundamental via yfinance (solo para
@@ -291,15 +303,16 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
         else:
             lo = rule_cfg.get("accion_min_usd", 150)
             hi = rule_cfg.get("accion_max_usd", 250)
+        monto_fmt = fmt_monto_riesgo(lo, hi, sizing)
         if is_actionable:
             if rule_name == "small_dip":
-                return f"{prefijo_regimen}Considerar compra USD {lo}-{hi} (sizing por vol)."
+                return f"{prefijo_regimen}Considerar compra {monto_fmt} (sizing por vol)."
             elif rule_name == "medium_dip":
-                return f"{prefijo_regimen}Compra puntual USD {lo}-{hi} si tesis intacta (sizing por vol)."
+                return f"{prefijo_regimen}Compra puntual {monto_fmt} si tesis intacta (sizing por vol)."
             elif rule_name == "large_dip":
-                return f"{prefijo_regimen}Oportunidad agresiva USD {lo}-{hi} (sizing por vol)."
+                return f"{prefijo_regimen}Oportunidad agresiva {monto_fmt} (sizing por vol)."
             elif rule_name == "bear_crash":
-                return f"{prefijo_regimen}MANUAL REVIEW. Si tesis viva, compra USD {lo}-{hi}."
+                return f"{prefijo_regimen}MANUAL REVIEW. Si tesis viva, compra {monto_fmt}."
         elif is_tier2:
             return f"{prefijo_regimen}Evaluar compra oportunística. Entry si tesis OK."
         else:  # tier3
@@ -433,8 +446,16 @@ def evaluate_connors_rules(ticker: str, m: dict, rules: dict,
     if (rsi2 is not None and rsi2 < rsi2_max
             and m.get("above_sma200")
             and conviction in ("cartera", "recurrente", "tier1", "tier2")):
-        sug = (f"Pullback comprable: agregar en la ventana de 1-3 días."
-               if is_actionable else "Evaluar entry oportunístico.")
+        if is_actionable:
+            if sizing and portfolio_usd:
+                lo_r, hi_r = monto_por_riesgo(m.get("vol_diaria_pct"), sizing, portfolio_usd,
+                                              mult=mr.get("sizing_mult", 0.6), regimen=regimen)
+                monto_fmt_r = fmt_monto_riesgo(lo_r, hi_r, sizing)
+            else:
+                monto_fmt_r = "USD 100-250"
+            sug = f"Pullback comprable: agregar {monto_fmt_r} en la ventana de 1-3 días (sizing por vol)."
+        else:
+            sug = "Evaluar entry oportunístico."
         alerts.append({
             "categoria":  "oportunidad_rsi2",
             "severidad":  _severidad("media"),

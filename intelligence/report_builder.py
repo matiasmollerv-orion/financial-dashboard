@@ -118,6 +118,15 @@ def load_daily_brief_json() -> dict:
     return {"resumen_mercado": "", "alertas": [], "mensaje_raw": row.get("mensaje", "")}
 
 
+def extract_monto(sugerencia: str) -> str:
+    """Extrae un monto corto para el badge de la card desde el texto de
+    sugerencia (ej. 'USD 700-900' o 'USD 1000 (tope...)' → 'USD 700-900').
+    None si la sugerencia no trae monto (tier2/tier3, RSI2 sin sizing, etc.)."""
+    import re
+    m = re.search(r"USD\s*[\d,]+(?:-[\d,]+)?", sugerencia or "")
+    return m.group(0) if m else None
+
+
 @_safe_query
 def load_raw_opportunity_alerts(max_alerts: int = 5) -> list:
     """Fallback: carga alertas crudas del opportunity_detector cuando no hay daily_brief AI."""
@@ -195,13 +204,19 @@ def load_raw_opportunity_alerts(max_alerts: int = 5) -> list:
     }
     for i, a in enumerate(all_alerts[:max_alerts], 1):
         metricas = a.get("metricas") or {}
+        mensaje = a.get("mensaje", "")
+        sugerencia = a.get("sugerencia", "")
+        # El cuerpo del email mostraba SOLO 'mensaje' (qué pasó) — 'sugerencia'
+        # (qué hacer al respecto: monto, "agregar en ventana 1-3 días", warning
+        # de fundamentales débiles, etc.) se descartaba siempre. Se concatena.
+        detalle = f"{mensaje} → {sugerencia}" if sugerencia else mensaje
         result.append({
             "prioridad": i,
             "tipo": cat_to_tipo.get(a.get("categoria", ""), "MONITOREAR"),
             "ticker": a.get("activo", "?"),
             "titulo": a.get("titulo", ""),
-            "detalle": a.get("mensaje", ""),
-            "monto_sugerido": None,
+            "detalle": detalle,
+            "monto_sugerido": extract_monto(sugerencia),
             "urgencia": "ESTA SEMANA" if a.get("severidad") in ("critica", "alta") else "PROXIMO MES",
         })
 
