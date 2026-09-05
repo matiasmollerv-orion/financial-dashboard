@@ -160,6 +160,7 @@ def render():
         with col_p2:
             plataforma_opts = [
                 "Todo",
+                "Racional (Todo)",
                 "Racional Internacional",
                 "Racional Nacional",
                 "Santander Corredora",
@@ -469,10 +470,12 @@ def render():
 
             # ── Gráfico de inversión por período ─────────────
             st.divider()
-            section_title("Inversión acumulada por período (Historial Racional)")
+            section_title("Inversión por período (Historial Racional)")
 
             if not df_racional.empty and "monto_clp" in df_racional.columns:
                 df_r = df_racional.copy()
+                if "tipo" in df_r.columns:
+                    df_r = df_r[df_r["tipo"] == "compra"]  # bug: sumaba ventas como si fueran inversión
                 df_r["fecha"]    = pd.to_datetime(df_r["fecha"])
                 df_r["monto_clp"] = pd.to_numeric(df_r["monto_clp"], errors="coerce")
 

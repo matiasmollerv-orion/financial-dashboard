@@ -103,14 +103,19 @@ verticales:
       GOOGL: { rol: "hyperscaler / cloud IA",         nivel_riesgo: bajo }
       AMZN:  { rol: "hyperscaler (AWS)",              nivel_riesgo: bajo }
       META:  { rol: "hyperscaler / aplicaciones",     nivel_riesgo: bajo }
+      AMD:   { rol: "GPU (competidor de NVDA en datacenter/MI300)", nivel_riesgo: medio }
       MU:    { rol: "memoria (HBM)",                  nivel_riesgo: medio }
       AVGO:  { rol: "custom silicon",                 nivel_riesgo: medio }
       MRVL:  { rol: "custom silicon (NVLink Fusion)", nivel_riesgo: medio }
       ANET:  { rol: "networking datacenter",          nivel_riesgo: medio }
       CEG:   { rol: "energía datacenter (nuclear)",   nivel_riesgo: medio }
       VRT:   { rol: "infraestructura eléctrica datacenter", nivel_riesgo: medio }
-      CRWV:  { rol: "neocloud (pre-consolidación)",   nivel_riesgo: alto }
-      NBIS:  { rol: "neocloud (pre-consolidación)",   nivel_riesgo: alto }
+      CRWV:  { rol: "neocloud (pre-consolidación)",   nivel_riesgo: alto, trailing_stop_pct: 15,
+               riesgo_financiero: "deuda USD51.6B financiando compra de GPUs (modelo de leasing) — el mayor apalancamiento del grupo alto riesgo. FCF -9.1B/año. No es 'se queda sin caja', es riesgo de refinanciamiento/tasas si el crédito se endurece." }
+      NBIS:  { rol: "neocloud (pre-consolidación)",   nivel_riesgo: alto, trailing_stop_pct: 15,
+               riesgo_financiero: "deuda neta (cash USD8.0B < deuda USD10.2B) + FCF -9.6B/año — el cash solo cubre ~10 meses de quema al ritmo actual. Contradice la nota vieja de 'balance limpio' del watchlist — dato desactualizado, corregido 22 ago 2026." }
+      CBRS:  { rol: "neocloud (pre-consolidación) — único challenger listado de NVDA", nivel_riesgo: alto, trailing_stop_pct: 25,
+               riesgo_financiero: "cash neto +USD6.4B (cash 7.9B vs deuda 1.5B) — colchón real grande. Riesgo no es quedarse sin caja, es perder la carrera de chips IA frente a jugadores más grandes." }
 
   fintech_latam:
     tesis: >
@@ -145,7 +150,7 @@ verticales:
                      "counter-UAS", "unmanned aerial vehicle defense"]
     tickers:
       AVAV: { rol: "drones tácticos (Switchblade)", nivel_riesgo: alto }
-    candidatos_evaluar: [KTOS, RKLB]  # ya en watchlist.yaml tier2/pendientes
+      KTOS: { rol: "drones/targets + contratos DoD — clasificado 22 ago 2026: a diferencia de AVAV, ya es rentable (margen neto 2%, ROE positivo, revenue +30,5% YoY) — menos especulativo que el resto de la vertical", nivel_riesgo: medio }
 
   movilidad:
     tesis: >
@@ -174,7 +179,10 @@ verticales:
     tickers:
       CCJ:   { rol: "uranio (renacimiento nuclear)", nivel_riesgo: medio }
       URNM:  { rol: "canasta uranio/nuclear",        nivel_riesgo: medio }
-      BE:    { rol: "fuel cells",                    nivel_riesgo: alto }
+      BE:    { rol: "fuel cells",                    nivel_riesgo: alto, trailing_stop_pct: 35,
+               riesgo_financiero: "FCF POSITIVO (+USD532M/año) — la más sana del grupo alto riesgo, se autofinancia. Riesgo bajo de supervivencia, aunque sigue siendo volátil." }
+      OKLO:  { rol: "SMR (reactor modular pequeño) — pre-revenue, clasificado 22 ago 2026", nivel_riesgo: alto, trailing_stop_pct: 35,
+               riesgo_financiero: "cash neto +USD2.46B, deuda casi nula (USD4M), quema -239M/año — runway >10 años. Riesgo real no es caja, es horizonte largo hasta licencia comercial NRC." }
 
   materiales_criticos:
     tesis: >
@@ -187,9 +195,48 @@ verticales:
                      "battery materials", "copper supply"]
     tickers:
       SQM:  { rol: "litio — posición #1 del portafolio",       nivel_riesgo: medio }
-      MP:   { rol: "tierras raras",                             nivel_riesgo: alto }
+      MP:   { rol: "tierras raras",                             nivel_riesgo: alto, trailing_stop_pct: 25,
+              riesgo_financiero: "cash neto +USD0.47B, quema -433M/año — runway ~3.4 años, pero con ingresos reales y respaldo gubernamental (minerales críticos)." }
       CPER: { rol: "canasta cobre",                             nivel_riesgo: medio }
       REMX: { rol: "canasta tierras raras",                     nivel_riesgo: medio }
+
+  espacio_conectividad:
+    tesis: >
+      Confirmado por Matías el 22 ago 2026: quiere exposición deliberada a la
+      economía espacial/conectividad satelital, no es residuo accidental de
+      compras sueltas. ASTS (direct-to-cell broadband) y RKLB (launch +
+      adquisición de Iridium en 2026, que lo convierte también en operador de
+      conectividad satelital) se solapan parcialmente en tesis — ambos
+      apuestan a infraestructura de comunicación vía satélite, aunque con
+      modelos de negocio distintos (ASTS = red nueva desde cero conectada a
+      celulares existentes; RKLB/Iridium = red ya operacional + lanzadores
+      propios). No se fuerza una decisión de solapamiento hoy (posiciones
+      chicas, USD 564 y USD 231 respectivamente) pero revisar bajo criterio
+      3 (solapamiento) de criterios_venta si alguna crece a tamaño relevante.
+    horizonte_venta: "temático — mientras la tesis de infraestructura espacial/conectividad viva."
+    palabras_clave: ["satellite constellation", "direct-to-cell", "space economy",
+                      "satellite broadband", "launch provider", "LEO satellite"]
+    tickers:
+      ASTS: { rol: "conectividad satelital directa a celular — pre-revenue, cash burn alto (FCF -USD1.8B, deuda neta ~USD700M)", nivel_riesgo: alto, trailing_stop_pct: 15,
+              riesgo_financiero: "runway ~1.3 años de caja al ritmo de quema actual — probable necesidad de levantar capital (dilución) en los próximos 12-18 meses." }
+      RKLB: { rol: "lanzadores + Iridium (satélites operacionales, ingresos recurrentes) — integración de M&A en curso", nivel_riesgo: alto, trailing_stop_pct: 35,
+              riesgo_financiero: "cash neto +USD2.17B, deuda casi nula, quema -252M/año — runway ~9 años. La más sana de las apuestas espaciales." }
+
+  fotonica_interconexion:
+    tesis: >
+      Agregada 22 ago 2026 a pedido de Matías — gap real en la cadena de IA
+      que el propio sistema tenía identificado como bucket temático
+      (Photonics en watchlist.yaml) pero nunca graduado a compra. La
+      interconexión óptica dentro del datacenter es la capa entre GPU/
+      custom silicon y networking — parte de la cadena crítica, no
+      tangencial. LITE tenía el mejor perfil de los 3 comparables
+      (COHR/LITE/AAOI): PEG 0.63, revenue +109% YoY, margen acercándose a
+      breakeven.
+    horizonte_venta: "mientras la tesis de interconexión óptica para IA viva."
+    palabras_clave: ["photonics", "optical interconnect", "silicon photonics",
+                      "co-packaged optics", "transceiver"]
+    tickers:
+      LITE: { rol: "interconexión óptica datacenter", nivel_riesgo: medio }
 
   private_equity_credit:
     tesis: >
@@ -218,7 +265,8 @@ verticales:
     palabras_clave: ["quantum computing", "qubit", "quantum advantage",
                      "quantum error correction"]
     tickers:
-      IONQ: { rol: "quantum computing", nivel_riesgo: alto }
+      IONQ: { rol: "quantum computing", nivel_riesgo: alto, trailing_stop_pct: 35,
+              riesgo_financiero: "cash neto +USD2.07B, deuda mínima, quema -88M/año — runway >20 años. El riesgo real no es la caja, es si el quantum computing como categoría llega a ser comercialmente viable — horizonte largo, no de corto plazo." }
 
 # =============================================================================
 # CRITERIOS DE VENTA — política formal, ORDENADA, para evitar recomendaciones
@@ -352,6 +400,14 @@ disciplina_por_riesgo:
         VOLATILIDAD PROPIA de cada posición, para no perder una ganancia
         de +200% en una burbuja igual que para no profundizar una
         posición que va mal desde el día uno.
+      fallback_trailing:
+        # Añadido 22 ago 2026: el stop σ escala con sqrt(90 días), así que para
+        # volatilidad diaria >5-6% (típico en satelitales/neocloud/pre-revenue)
+        # el umbral implícito supera 60-100%+ de caída — no operable en la
+        # práctica. Implementado en sell_engine.py::check_stop_loss_trailing_fallback.
+        activa_si: "sigma_umbral × sigma_90d_pct > 60% de caída implícita"
+        tipo: "trailing % fijo desde máximo de 90 días (mismo principio, umbral realista)"
+        pct: 30.0
   medio:
     revision_calendario_dias: 180
     stop_loss: null   # sin stop-loss duro; solo revisión semestral de tesis
@@ -431,9 +487,9 @@ profit_taking:
     caso a caso (agregar, mantener, recortar), no venta mecánica.
 
 # ── EVENTOS PROGRAMADOS ───────────────────────────────────────────────────────
-eventos:
-  - { ticker: VCX, fecha: "2026-09-01", tipo: "lockup_expiry", dias_aviso: 21,
-      nota: "Lockup expira septiembre 2026. Premium 390% sobre NAV — VENDER antes o al vencimiento." }
+# VCX: vendida el 13 jul 2026 (confirmado en racional_transacciones, 6.6 acciones
+# a USD 70) — ANTES del lockup de septiembre. Evento resuelto, quitado 22 ago 2026.
+eventos: []
 
 # ── TRIGGERS DE REVISIÓN FUTURA (condiciones que, si cambian, deben abrir una nueva conversación) ──
 triggers_revision_futura:

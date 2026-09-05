@@ -5,8 +5,9 @@
 # Última actualización: 5 junio 2026
 # =============================================================================
 
-# ── PLAN RECURRENTE (25 tickers, semanal martes) ─────────────────────────────
-# Aporte real: ~USD 416/sem = USD 1.802/mes
+# ── PLAN RECURRENTE (27 tickers, semanal martes) ─────────────────────────────
+# Aporte real: USD 435/sem = ~USD 1.885/mes. Confirmado con fotos de Racional
+# el 24 ago 2026 tras subida de límite de la app a 27 slots.
 recurrente:
   - { ticker: NU,   usd_sem: 40, bucket: "Convicción LatAm",    tesis: "LatAm fintech 100M+ usuarios, ROE 30%+" }
   - { ticker: MELI, usd_sem: 25, bucket: "Convicción LatAm",    tesis: "Ecommerce + Mercado Pago" }
@@ -19,20 +20,24 @@ recurrente:
   - { ticker: NVDA, usd_sem: 25, bucket: "IA core",             tesis: "GPU monopolio, Blackwell/Rubin" }
   - { ticker: TSM,  usd_sem: 18, bucket: "IA foundry",          tesis: "Sub-7nm insustituible" }
   - { ticker: ASML, usd_sem: 14, bucket: "IA litografía",       tesis: "Monopolio EUV" }
-  - { ticker: MU,   usd_sem: 12, bucket: "IA memory",           tesis: "HBM sold-out 2026" }
+  - { ticker: MU,   usd_sem: 18, bucket: "IA memory",           tesis: "HBM sold-out 2026. Subida de USD12 a USD18 el 24 ago 2026 — PEG 0.14, la más barata de todo el DCA relativa a su crecimiento." }
   - { ticker: MSFT, usd_sem: 13, bucket: "IA cloud",            tesis: "Azure + OpenAI partnership" }
-  - { ticker: AVGO, usd_sem: 8,  bucket: "IA custom silicon",   tesis: "Bridgewater 13F Q1" }
-  - { ticker: GOOGL,usd_sem: 10, bucket: "Mag7",                tesis: "Anthropic + Waymo, Berkshire triplicó" }
+  - { ticker: AVGO, usd_sem: 15, bucket: "IA custom silicon",   tesis: "Reincorporada al DCA 24 ago 2026 tras subida de límite de Racional a 27 slots. Subida de USD10 a USD15 el 24 ago — PEG 0.41." }
+  - { ticker: GOOGL,usd_sem: 15, bucket: "Mag7",                tesis: "Anthropic + Waymo, Berkshire triplicó. Subida de USD10 a USD15 el 24 ago — PEG 0.94, +25.2% upside." }
   - { ticker: AMZN, usd_sem: 10, bucket: "Mag7",                tesis: "AWS, Tepper+Ackman+Bridgewater 13F" }
   - { ticker: CRWV, usd_sem: 8,  bucket: "Neocloud",            tesis: "USD 99B backlog, OpenAI client" }
   - { ticker: NBIS, usd_sem: 8,  bucket: "Neocloud",            tesis: "Balance limpio USD 3.7B cash" }
-  - { ticker: OKLO, usd_sem: 18, bucket: "Nuclear/SMR",         tesis: "Pure-play SMR (pre-revenue, volátil)" }
-  - { ticker: ARES, usd_sem: 15, bucket: "Private credit",      tesis: "Financia gap CapEx/FCF hyperscalers" }
+  - { ticker: AMD,  usd_sem: 15, bucket: "IA GPU",              tesis: "Agregada al DCA 24 ago 2026 — competidor de NVDA en GPU datacenter (MI300). Subida de USD10 a USD15 el 24 ago — PEG 1.03, comparable a GOOGL." }
+  - { ticker: CBRS, usd_sem: 15, bucket: "Neocloud",            tesis: "Agregada al DCA 24 ago 2026 — el balance más sano de los 3 neocloud (caja neta +USD6.4B), entry target Tier 1 ya tocado (precio bajo el rango USD200-220)." }
+  - { ticker: ARES, usd_sem: 15, bucket: "Private credit",      tesis: "Financia gap CapEx/FCF hyperscalers. Confirmada en el DCA por Matías 22 ago 2026 — no se saca pese a comparación desfavorable vs KKR (esa comparación era para otra decisión, no para el DCA)." }
   - { ticker: GLDM, usd_sem: 15, bucket: "Oro hedge",           tesis: "Debasement monetario" }
   - { ticker: LLY,  usd_sem: 13, bucket: "Healthcare/GLP-1",    tesis: "Líder Ozempic, Foundayo aprobado" }
   - { ticker: UNH,  usd_sem: 20, bucket: "Healthcare",          tesis: "Goldman Conviction Buy, Optum" }
   - { ticker: IONQ, usd_sem: 10, bucket: "Quantum 20y",         tesis: "Revenue +755% YoY, gov USD 2B funding" }
   - { ticker: CCJ,  usd_sem: 8,  bucket: "Uranio",              tesis: "Renacimiento nuclear" }
+  - { ticker: LITE, usd_sem: 15, bucket: "Photonics",           tesis: "Graduada de Tier 3 el 22 ago 2026 a pedido de Matías, confirmada activa en Racional a USD 15/sem (no 8, monto real). PEG 0.63 con revenue +109% YoY, el mejor de los 3 comparables (COHR/LITE/AAOI)." }
+  - { ticker: KTOS, usd_sem: 10, bucket: "Defense",             tesis: "Movida de Tier 1 a DCA el 22 ago 2026 a pedido de Matías — rentable (margen 2%, ROE positivo), target consenso +84.7% upside, strong buy." }
+  - { ticker: SCTX, usd_sem: 5,  bucket: "AI drug discovery",   tesis: "Agregada al DCA 28 ago 2026 — la más especulativa del plan a propósito (por eso el monto chico): pre-clínica, primer ensayo humano recién 2027-28, caja neta ajustada (~USD3.4M), solo 3 analistas. Cofundada por Jennifer Doudna, partnerships con Biogen/Sanofi/Lilly." }
 
 # ── WATCHLIST: ENTRY TARGETS ─────────────────────────────────────────────────
 # Tier 1: Alta convicción, entry target definido
@@ -42,8 +47,6 @@ watchlist:
   tier1:
     - { ticker: MRVL, nombre: "Marvell Technology",   entry_usd: [220, 235], size_usd: [300, 500], bucket: "IA custom silicon",  tesis: "Custom silicon + NVLink Fusion. NVDA invirtió USD 2B. Design wins Amazon/Google/MSFT" }
     - { ticker: UBER, nombre: "Uber Technologies",    entry_usd: [70, 75],   size_usd: [400, 600], bucket: "Logística",          tesis: "OS logístico urbano. FCF USD 9.8B. Uber One 50M. Tepper+Ackman compraron Q1" }
-    - { ticker: CBRS, nombre: "Cerebras Systems",     entry_usd: [200, 220], size_usd: [300, 500], bucket: "Neocloud",           tesis: "Único challenger NVDA listed. IPO mayo 2026. USD 99B OpenAI deal" }
-    - { ticker: KTOS, nombre: "Kratos Defense",        entry_usd: null,       size_usd: [1000, 1000], bucket: "Defense",          tesis: "Drones + DoD contracts, Trump pro-defense. Compra única junio" }
     - { ticker: RKLB, nombre: "Rocket Lab",            entry_usd: null,       size_usd: [600, 600],  bucket: "Space",             tesis: "Space economy infrastructure. Compra única junio" }
 
   tier2:
@@ -57,13 +60,15 @@ watchlist:
     - { ticker: SYM,  nombre: "Symbotic",              trigger: "oportunística", bucket: "Robotics",  tesis: "Robotic warehouse automation" }
 
   tier3:
-    - { ticker: LITE, nombre: "Lumentum",              bucket: "Photonics" }
     - { ticker: AAOI, nombre: "Applied Optoelectronics", bucket: "Photonics" }
     - { ticker: QCOM, nombre: "Qualcomm",              bucket: "Edge AI" }
     - { ticker: RXRX, nombre: "Recursion Pharma",      bucket: "AI drug discovery" }
     - { ticker: RGTI, nombre: "Rigetti",                bucket: "Quantum" }
     - { ticker: RDW,  nombre: "Redwire",                bucket: "Space" }
     - { ticker: SDGR, nombre: "Schrodinger",            bucket: "AI drug discovery" }
+    - { ticker: MRNA, nombre: "Moderna",                bucket: "Healthcare/GLP-1", tesis: "Agregada 24 ago 2026 a pedido de Matías. Ojo: target consenso (104,5) está BAJO el precio actual (142,8) — implica -27% según analistas, no es una entrada barata hoy." }
+    - { ticker: TEM,  nombre: "Tempus AI",               bucket: "AI drug discovery", tesis: "Agregada 24 ago 2026. Diagnóstico de precisión con IA, revenue +21.6% YoY. Target también algo bajo el precio actual (-10%), pese a rating 'buy' — dato a verificar." }
+    - { ticker: UNITREE, nombre: "Unitree Robotics (Yushu Technology)", bucket: "Robotics", tesis: "Radar SOLO, sin DCA — 28 ago 2026 confirmado con Matías. Sin ticker accesible desde EEUU (cotiza solo en STAR Market Shanghái). KOID (ETF robótica humanoide) NO la tiene entre sus principales posiciones — no es proxy real. Revisar si aparece ADR o Racional habilita acceso a mercado chino." }
 
 # ── ACCIONES PENDIENTES ──────────────────────────────────────────────────────
 acciones_pendientes:

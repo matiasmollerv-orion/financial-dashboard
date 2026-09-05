@@ -15,6 +15,14 @@
 #   corre el comando, registra todo y PROPAGA el exit code
 #   (así el failure tracker del workflow sigue funcionando).
 #
+# --table acepta VARIAS tablas separadas por coma cuando un mismo loader
+# escribe en más de una (ej: load_santander.py escribe santander_gastos
+# Y santander_cuenta en la misma corrida) — se registra una fila de stats
+# por tabla, así ninguna queda ciega para health_check. Corregido 28 ago
+# 2026: santander_cuenta llevaba semanas sin trackearse porque el wrapper
+# solo medía --table santander_gastos, un punto ciego real que dejó pasar
+# 28 días sin cartola de cuenta corriente sin que nada alertara.
+#
 # Sin --table registra solo duración + exit_ok (ej: report_builder).
 # CERO llamadas a APIs pagadas — aritmética sobre Supabase.
 # ============================================================
@@ -70,19 +78,25 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--script", required=True, help="Nombre del paso (ej: load_santander)")
-    parser.add_argument("--table", default=None, help="Tabla destino a medir (delta de filas)")
+    parser.add_argument("--table", default=None,
+                         help="Tabla(s) destino a medir (delta de filas). Varias, separadas "
+                              "por coma, si el mismo loader escribe en más de una tabla "
+                              "(ej: santander_gastos,santander_cuenta) — se registra una fila "
+                              "de stats por tabla, ninguna queda sin monitorear.")
     args = parser.parse_args(own_args)
 
     if not cmd:
         print("Falta el comando después de --")
         sys.exit(2)
 
+    tablas = [t.strip() for t in args.table.split(",")] if args.table else []
+
     sb = None
-    before = None
+    before = {}
     try:
         sb = get_client()
-        if args.table:
-            before = count_rows(sb, args.table)
+        for t in tablas:
+            before[t] = count_rows(sb, t)
     except Exception as e:
         print(f"[pipeline_stats] warning: sin conexión Supabase: {str(e)[:80]}")
 
@@ -91,15 +105,14 @@ def main():
     duracion = time.time() - t0
     exit_ok = proc.returncode == 0
 
-    filas_nuevas = None
-    after = None
-    if sb is not None and args.table:
-        after = count_rows(sb, args.table)
-        if before is not None and after is not None:
-            filas_nuevas = after - before
-
     if sb is not None:
-        record(sb, args.script, args.table, filas_nuevas, after, duracion, exit_ok)
+        if tablas:
+            for t in tablas:
+                after = count_rows(sb, t)
+                filas_nuevas = (after - before[t]) if (before.get(t) is not None and after is not None) else None
+                record(sb, args.script, t, filas_nuevas, after, duracion, exit_ok)
+        else:
+            record(sb, args.script, None, None, None, duracion, exit_ok)
 
     sys.exit(proc.returncode)
 

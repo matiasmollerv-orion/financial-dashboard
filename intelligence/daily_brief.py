@@ -11,6 +11,18 @@
 #   - Watchlist + entry targets son prioridad
 #   - Signal, not noise
 #
+# NOTA (auditoria de costo API 2026-08-22): a diferencia de ai_analyst.py,
+# este script NO usa prompt caching ni Batch API, a proposito:
+#   - CACHING: hace UNA sola llamada por corrida (no un loop). El caching
+#     solo ahorra si el mismo prefijo se reusa en MULTIPLES llamadas -
+#     aca solo agregaria el recargo de +25% por escribir el cache sin
+#     ninguna lectura que lo compense. Aplicarlo aca lo haria MAS caro.
+#   - BATCH API: es asincronica (minutos a 24h de turnaround). El Daily
+#     Brief tiene que estar listo para el correo de la mañana - meterlo
+#     a un batch arriesga que el brief no llegue a tiempo o llegue vacio
+#     ese dia. El ahorro de 50% sobre UNA llamada/dia es centavos; no
+#     vale ese riesgo de latencia para un entregable con horario fijo.
+#
 # Uso: python -m intelligence.daily_brief
 # ============================================================
 

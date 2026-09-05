@@ -18,6 +18,7 @@
 | Script | Tabla(s) | Qué carga |
 |--------|----------|-----------|
 | `load_santander.py --days 14` | `santander_gastos`, `santander_cuenta` | Tarjeta CLP/USD + cuenta corriente |
+| `load_falabella.py --days 35` | `falabella_gastos` | Tarjeta CMR Falabella (correo `EstadodeCuenta@cmr.cl`) |
 | `load_racional_ventas.py --days 14` | `racional_transacciones` (tipo=venta) | Ventas "Vendiste X (TICKER)" |
 | `load_racional.py --days 14` | `racional_transacciones` (tipo=compra) | Compras "Invertiste en X (TICKER)" + portafolio nacional |
 | `load_racional_pdf.py --days 14` | `racional_transacciones` | Transacciones desde PDFs DriveWealth (cubre DCA, rebalanceo, ventas no capturadas por emails individuales) |
@@ -91,6 +92,7 @@ load_buda.py          ← carga compras crypto Buda
 Tablas principales:
 - `santander_gastos`: gastos tarjeta de crédito (CLP y USD)
 - `santander_cuenta`: movimientos cuenta corriente
+- `falabella_gastos`: gastos tarjeta CMR Falabella (automatizado, ver Fuentes de datos)
 - `racional_transacciones`: compras y ventas en Racional (internacional y nacional)
 - `cartera_actual`: posiciones actuales del portafolio
 - `buda_crypto`: transacciones crypto en Buda
@@ -215,6 +217,29 @@ df_gastos = df[
 - **Santander**: PDFs desde Gmail (from:mensajeria@santander.cl)
   - Tarjeta CLP y USD → `santander_gastos`
   - Cuenta corriente `_CC.pdf` → `santander_cuenta`
+- **Falabella CMR** (agregado 2026-08-15, automatizado 2026-09-04): tarjeta de crédito
+  CMR Mastercard Elite → `falabella_gastos`.
+  - Parser: `extractors/falabella_pdf.py` (pdfplumber sobre texto plano, no posicional —
+    el PDF de Falabella viene bien estructurado en líneas, a diferencia del de Santander).
+  - **Cartola real** llega de `EstadodeCuenta@cmr.cl`, asunto "Información CMR Mastercard
+    Elite Vencimiento DD Mes AAAA" (el vencimiento varía cada mes). Para IMAP SUBJECT
+    search se usa el substring **"CMR Mastercard"** (sin tilde) — "Información CMR" con
+    tilde NO matchea vía IMAP aunque se normalice a ASCII, probado 2026-09-04.
+  - **PDF con clave**: usa la MISMA clave que Santander (RUT sin puntos/guión/DV, en
+    `SANTANDER_PDF_PASSWORD`) — confirmado con la cartola real, no hizo falta secret nuevo.
+    `FALABELLA_PDF_PASSWORD` queda como override opcional si algún día cambia.
+  - Carga: `load_falabella.py --days 35` (automático, en `daily-update.yml`) o
+    `--file <pdf>` (manual puntual).
+  - `monto` = "Monto Operación" del PDF, con signo (negativo = "Pago tarjeta cmr",
+    categorizado a Fixed Costs/Pago TC igual que Santander — se excluye del análisis).
+    Se guarda como valor absoluto en la tabla, igual que `santander_gastos`.
+  - `dashboard/utils.py:load_gastos()` ya une `santander_gastos` + `falabella_gastos`
+    (columna `fuente` distingue el origen). No hace falta tocar las vistas.
+  - ⚠️ **Pendiente de revisar**: la regla `AVANCE\b` en `categorias.py` clasifica
+    "Avance" (retiro/préstamo en efectivo, visto real en la cartola de agosto: ~$799.189
+    CLP en un viaje) como Fixed Costs/Comisiones — un avance no es una comisión, es un
+    monto prestado. Regla pre-existente del proyecto, recién visible con datos reales de
+    Falabella porque Santander no la disparaba tanto. No corregido aún.
 - **Racional**: emails con subject "Compraste X" / "Vendiste X"
 - **Gmail OAuth**: token.pickle en config/ (binario, NO json)
 
@@ -308,12 +333,34 @@ Costo: $0 (SEC EDGAR + yfinance + Supabase, sin API de Anthropic).
 - Antecedente: el bug de paginación Supabase (solo 1000 filas) estuvo meses invisible
   porque nada comparaba lo cargado contra lo esperado.
 
-### ⚠️ Deduplicación email vs PDF DriveWealth (bug conocido)
-Los trades pueden llegar por DOS fuentes: email "Invertiste en" (trade completo) y
-PDF DriveWealth (fills partidos, ej 1.024125 → 1.0 + 0.024125). La dedupe por
-(fecha, ticker, monto) NO los matchea → posiciones infladas. El snapshot mensual
-desde cartolas oficiales LIMPIA esta contaminación (por eso es crítico hacerlo
-cada cierre de mes). En junio 2026 infló AVGO +2.03, MRVL +1.73, NU +6.49, NVDA +0.39.
+### ⚠️ Deduplicación email vs PDF DriveWealth (bug RESUELTO 2026-08-15)
+Los trades pueden llegar por DOS fuentes: email "Invertiste en"/"Vendiste" (trade
+completo, 1 fila) y PDF DriveWealth (mismo trade partido en fills, ej 1.024125 →
+1.0 + 0.024125, varias filas). La dedupe original de `load_racional_pdf.py` era por
+(fecha, ticker, tipo, acciones) — como las cantidades de acciones nunca calzan entre
+el total del correo y los fills parciales del PDF, NUNCA hacía match → se insertaban
+ambas fuentes, duplicando el trade. El snapshot mensual desde cartolas oficiales
+LIMPIA la contaminación en `cartera_actual` (posiciones), pero **no** en
+`racional_transacciones` (el historial crudo se queda contaminado para siempre) —
+por eso vistas que leen la tabla directo (ej. "Inversión acumulada por período" en
+Historial, o reconstrucciones de costo base) mostraban montos inflados aunque las
+posiciones actuales se vieran bien.
+- **Detectado**: 310 filas duplicadas, USD 64.181 acumulado desde 2022 (auditoría
+  completa por fecha+ticker+tipo, matcheando monto exacto al centavo entre el correo
+  y la suma de fills del PDF). **Limpiado** de `racional_transacciones` el 2026-08-15.
+- **Prevención**: `load_racional_pdf.py` ahora compara, ANTES de insertar, la suma
+  de montos de un grupo de fills (fecha+ticker+tipo) contra el monto de un trade que
+  ya llegó por correo (`racional_invertiste_en`/`racional_vendiste`) — si calza exacto,
+  no inserta el grupo completo del PDF. Ya no debería volver a duplicarse.
+- Nota histórica: en junio 2026 esta contaminación infló temporalmente AVGO +2.03,
+  MRVL +1.73, NU +6.49, NVDA +0.39 en `cartera_actual` (antes del snapshot de limpieza).
+
+### ⚠️ "Inversión acumulada por período" (Historial) — bug RESUELTO 2026-08-15
+El gráfico en `dashboard/views/inversiones.py` sumaba `monto_clp` de **todas** las
+filas de `racional_transacciones` sin filtrar por `tipo` — ventas se sumaban junto
+con compras como si fueran "inversión", inflando el total (ej. julio 2026 mostraba
+CLP 13,3M cuando las compras reales eran ~CLP 4,4M). Fix: se filtra `tipo == "compra"`
+antes de agrupar.
 
 (`ai_analyst` y `daily_brief` existen pero están FUERA del workflow por costo API ~$54/mes)
 

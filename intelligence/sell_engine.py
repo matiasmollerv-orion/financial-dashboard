@@ -112,6 +112,21 @@ def get_nivel_riesgo(ticker: str, profile: dict) -> str:
     return "medio"  # default conservador para tickers sin vertical asignada
 
 
+def get_trailing_stop_pct(ticker: str, profile: dict, default: float = 30.0) -> float:
+    """% de trailing stop calibrado por riesgo FINANCIERO real de cada ticker
+    (runway de caja, apalancamiento, si el FCF ya es positivo) — no un número
+    plano para todo nivel_riesgo=alto. Ver campo `trailing_stop_pct` en cada
+    ticker de investor_profile.yaml (agregado 22 ago 2026 a pedido de Matías:
+    'no todas esas acciones son iguales ni están en el mismo nivel de precio
+    ni tienen los mismos fundamentales'). Cae al default si el ticker no
+    tiene el campo (ej. nivel_riesgo=alto pero sin análisis de balance aún)."""
+    for vert in profile.get("verticales", {}).values():
+        info = vert.get("tickers", {}).get(ticker)
+        if info and "trailing_stop_pct" in info:
+            return float(info["trailing_stop_pct"])
+    return default
+
+
 def get_vertical(ticker: str, profile: dict) -> str:
     """Nombre de la vertical temática del ticker (para contexto en mensajes).
     None si es core/renta_fija/no clasificado."""
@@ -252,6 +267,78 @@ def check_stop_loss_riesgo(df: pd.DataFrame, profile: dict, metrics_map: dict) -
                               "en posición de riesgo alto — revisar si la tesis sigue viva "
                               "antes de decidir, pero no ignorar la señal.",
             })
+    return alerts
+
+
+# ── 4b. STOP-LOSS TRAILING FALLBACK (cuando el σ no es operable) ─
+# Añadido 22 ago 2026 a pedido de Matías. El stop-loss sigma (check
+# arriba) requiere que la caída supere sigma_umbral × sigma_90d_pct.
+# Para nombres de volatilidad diaria alta (>5-6%, típico en satelitales/
+# neocloud/pre-revenue), sigma_90d_pct escala con sqrt(90) y el umbral
+# implícito supera 60-100%+ de caída — matemáticamente casi imposible,
+# así que el stop-loss "siempre activo" en la práctica NUNCA se activa
+# para justo las posiciones más riesgosas que debería proteger.
+#
+# Fallback: si el umbral σ implícito es > SIGMA_UMBRAL_IMPLAUSIBLE (60%
+# de caída requerida), usar un trailing % fijo desde el mismo máximo de
+# 90d en su lugar. Mismo principio (protege ganancias grandes Y pérdidas
+# acumulándose, no depende de costo), pero con un umbral que sí es
+# alcanzable en la práctica. Complementa el check de σ, no lo reemplaza:
+# donde σ SÍ es operable (volatilidad diaria más baja), sigue mandando.
+SIGMA_UMBRAL_IMPLAUSIBLE = 60.0   # % de caída — sobre esto, el stop σ no es operable
+TRAILING_FALLBACK_DEFAULT = 30.0  # fallback si nivel=alto pero sin trailing_stop_pct propio
+
+
+def check_stop_loss_trailing_fallback(df: pd.DataFrame, profile: dict, metrics_map: dict) -> list:
+    alerts = []
+    disc = profile.get("disciplina_por_riesgo", {}).get("alto", {}).get("stop_loss") or {}
+    if not disc.get("aplica_siempre"):
+        return alerts
+    sigma_lim = disc.get("sigma_umbral", 2.5)
+
+    for _, row in df.iterrows():
+        tk = row["ticker"]
+        nivel = get_nivel_riesgo(tk, profile)
+        if nivel != "alto":
+            continue
+        # Calibrado por riesgo financiero real de CADA ticker (runway de caja,
+        # apalancamiento, si el FCF ya es positivo) — no un % plano para todo
+        # nivel_riesgo=alto. Ver get_trailing_stop_pct().
+        trailing_pct = get_trailing_stop_pct(tk, profile, default=TRAILING_FALLBACK_DEFAULT)
+        m = metrics_map.get(tk)
+        if not m or m.get("sigma_90d_pct") is None or m.get("max_90d") is None:
+            continue
+
+        umbral_implicito = sigma_lim * m["sigma_90d_pct"]
+        if umbral_implicito <= SIGMA_UMBRAL_IMPLAUSIBLE:
+            continue  # el check de σ de arriba es operable para este ticker, no duplicar
+
+        stop_price = m["max_90d"] * (1 - trailing_pct / 100)
+        if m["precio_actual"] > stop_price:
+            continue  # todavía no rompe el trailing
+
+        caida_pct = (m["precio_actual"] / m["max_90d"] - 1) * 100
+        gan = row.get("ganancia_pct")
+        gan_str = f"ganancia {gan:+.0f}% sobre costo" if pd.notna(gan) else "sin costo base claro"
+        alerts.append({
+            "categoria":  "venta_stop_loss_trailing",
+            "severidad":  "critica",
+            "activo":     tk,
+            "titulo":     f"STOP-LOSS (trailing): {tk} cayó {caida_pct:.1f}% desde máximo 90d",
+            "mensaje":    f"{tk} (riesgo alto, {gan_str}) cayó {caida_pct:.1f}% desde su máximo "
+                          f"de 90 días (USD {m['max_90d']:.2f} -> USD {m['precio_actual']:.2f}). "
+                          f"El stop-loss σ estándar no es operable en este ticker (umbral implícito "
+                          f"{umbral_implicito:.0f}% de caída, poco realista dada su volatilidad diaria) "
+                          f"— este es el fallback de trailing fijo ({trailing_pct:.0f}% desde máximo 90d).",
+            "metricas":   {"caida_desde_max90d_pct": round(caida_pct, 1),
+                           "max_90d": round(m["max_90d"], 2), "precio_actual": round(m["precio_actual"], 2),
+                           "umbral_sigma_implicito_pct": round(umbral_implicito, 1),
+                           "ganancia_pct": round(gan, 1) if pd.notna(gan) else None,
+                           "valor_usd": round(row["valor_usd"], 0)},
+            "sugerencia": "Evaluar salida o trim significativo — igual que el stop-loss σ, revisar "
+                          "primero si la tesis sigue viva antes de decidir, pero no ignorar la señal "
+                          "solo porque el σ estándar no la capturó.",
+        })
     return alerts
 
 
@@ -526,6 +613,8 @@ def fetch_metrics(df: pd.DataFrame, profile: dict) -> dict:
                 "drawdown_sigma": dd_sigma if dd_pct < 0 else 0.0,
                 "drawdown_90d_pct": dd90_pct,
                 "drawdown_90d_sigma": dd90_sigma if dd90_pct < 0 else 0.0,
+                "max_90d": max_90d,
+                "sigma_90d_pct": sigma_90d,  # % de caída que representa 1σ en la ventana de 90d
                 "pct_from_ath": (p / ath - 1) * 100,
                 "pct_20d": (p / float(close.iloc[-min(21, len(close))]) - 1) * 100,
                 "volume_ratio": None,
@@ -541,8 +630,8 @@ def fetch_metrics(df: pd.DataFrame, profile: dict) -> dict:
 
 
 # ── SAVE ────────────────────────────────────────────────────
-OWNED_CATEGORIES = ["venta_concentracion", "venta_stop_loss", "venta_evaluar",
-                    "evento_programado", "liquidez_emprendimiento",
+OWNED_CATEGORIES = ["venta_concentracion", "venta_stop_loss", "venta_stop_loss_trailing",
+                    "venta_evaluar", "evento_programado", "liquidez_emprendimiento",
                     "factor_concentracion", "revision_trimestral"]
 
 
@@ -602,6 +691,7 @@ def main():
         ("Concentración", lambda: check_concentracion(df, profile)),
         ("Duplicadas (EVALUAR)", lambda: check_duplicadas(df, profile, metrics_map)),
         ("Stop-loss por riesgo (sigma, siempre activo)", lambda: check_stop_loss_riesgo(df, profile, metrics_map)),
+        ("Stop-loss trailing (fallback cuando σ no es operable)", lambda: check_stop_loss_trailing_fallback(df, profile, metrics_map)),
         ("Revisión trimestral (riesgo alto)", lambda: check_revision_trimestral(df, profile)),
         ("Eventos programados", lambda: check_eventos(profile)),
         ("Liquidez emprendimiento", lambda: check_liquidez(df, profile)),

@@ -122,7 +122,7 @@ def fetch_existing_keys(page_size=1000):
     while True:
         start = page * page_size
         r = (sb.table("racional_transacciones")
-               .select("fecha,ticker,monto_usd,tipo,acciones")
+               .select("fecha,ticker,monto_usd,tipo,acciones,fuente")
                .range(start, start + page_size - 1).execute())
         all_rows.extend(r.data)
         if len(r.data) < page_size:
@@ -137,6 +137,18 @@ for r in existing_rows:
     acc = round(float(r.get("acciones") or 0), 4)
     existing_keys.add((r["fecha"], r["ticker"], r.get("tipo", ""), acc))
 print(f"   Ya en BD: {len(existing_keys)} transacciones\n")
+
+# Totales por (fecha, ticker, tipo) de trades que YA llegaron por correo
+# ("Invertiste en"/"Vendiste") — un PDF de DriveWealth reporta el MISMO
+# trade partido en fills, con cantidades de acciones distintas por fill,
+# así que la key de arriba (acciones) nunca hace match y se duplicaba.
+# Si la suma de fills nuevos calza EXACTA (al centavo) con el monto de
+# un trade ya capturado por correo, es el mismo trade → no insertar.
+existing_email_totals = {}
+for r in existing_rows:
+    if r.get("fuente") in ("racional_invertiste_en", "racional_vendiste"):
+        key = (r["fecha"], r["ticker"], r.get("tipo", ""))
+        existing_email_totals[key] = round(float(r.get("monto_usd") or 0), 2)
 
 # ── Procesar cada email ─────────────────────────────────────
 total_ok = 0
@@ -172,8 +184,25 @@ for i, m in enumerate(msgs):
     # Parse transactions from PDF
     transactions = parse_pdf_transactions(pdf_bytes)
 
+    # Si la suma de fills de un mismo (fecha, ticker, tipo) calza exacta
+    # (al centavo) con un trade que ya llegó por correo, es el MISMO
+    # trade partido en fills — no insertar nada de ese grupo.
+    grupo_montos = {}
+    for tx in transactions:
+        gkey = (tx["fecha"], tx["ticker"], tx["tipo"])
+        grupo_montos[gkey] = grupo_montos.get(gkey, 0) + round(float(tx.get("monto_usd") or 0), 2)
+    grupos_duplicados_con_correo = {
+        gkey for gkey, total in grupo_montos.items()
+        if gkey in existing_email_totals and abs(round(total, 2) - existing_email_totals[gkey]) < 0.01
+    }
+
     ok = skip = 0
     for tx in transactions:
+        gkey = (tx["fecha"], tx["ticker"], tx["tipo"])
+        if gkey in grupos_duplicados_con_correo:
+            skip += 1
+            continue
+
         # Deduplication key
         key = (tx["fecha"], tx["ticker"], tx["tipo"], round(tx["acciones"], 4))
         if key in existing_keys:

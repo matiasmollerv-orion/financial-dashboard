@@ -63,6 +63,8 @@ REGLAS = [
      "Fixed Costs", "Pago TC"),
     (r"PAGO CON KUSHKI|PAGO FACIL|PAGO ONLINE|PAGO RAPIDO",
      "Fixed Costs", "Pago TC"),
+    (r"PAGO TARJETA CMR",
+     "Fixed Costs", "Pago TC"),
 
     # Pago TC USD (abono de divisas = pago de tarjeta en dólares, NO es gasto)
     (r"ABONO DE DIVISAS|ABONO DIVISAS",
@@ -81,9 +83,11 @@ REGLAS = [
      "Fixed Costs", "Comisiones"),
     (r"DEVOLUC|DEVOLUCION|REEMBOLSO|CASHBACK",
      "Fixed Costs", "Comisiones"),
-    (r"AVANCE\b|CUOTA FIJA\b",
+    (r"CUOTA FIJA\b",
      "Fixed Costs", "Comisiones"),
     (r"PUNTO PAGOS|PAGOS MASIVOS|WEF\d+",
+     "Fixed Costs", "Comisiones"),
+    (r"SERVICIO ADMINISTRACION",
      "Fixed Costs", "Comisiones"),
 
     # Arriendo
@@ -274,6 +278,18 @@ REGLAS = [
      "Guilt Free", "Viajes"),
     (r"KIWI\.COM|DL \*KIWI|MAITENCILLO|APPART H|APPARTHOTEL",
      "Guilt Free", "Viajes"),
+    # Avance en efectivo (retiro en cajero) — es plata retirada y gastada, no
+    # una comisión bancaria (CUOTA FIJA sí lo es, esa regla queda arriba).
+    # Corregido 2026-09: NO todo avance es viaje — solo el que ocurre en el
+    # extranjero (divisa distinta a CLP, ej "Avance CL TRY 879920,0" o marca
+    # explícita "NACIONAL" para el que sí es en Chile). Orden importa: más
+    # específico primero.
+    (r"AVANCE.*NACIONAL",
+     "Guilt Free", "Compras"),
+    (r"AVANCE.*\b(TRY|EUR|GBP|CHF|HRK|BAM)\b",
+     "Guilt Free", "Viajes"),
+    (r"AVANCE\b",
+     "Guilt Free", "Compras"),
 
     # Compras / Retail
     (r"AMAZON\b|ALIEXPRESS|EBAY\b|SHEIN\b|TEMU\b|FALABELLA|RIPLEY|PARIS\b|LA POLAR|CORONA\b|HITES\b",

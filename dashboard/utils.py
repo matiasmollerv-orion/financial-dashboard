@@ -254,8 +254,10 @@ def load_ingresos():
 
 @st.cache_data(ttl=300)
 def load_gastos():
-    """Carga gastos Santander — paginación INLINE para evitar módulo cacheado en Streamlit Cloud."""
-    data = _fetch_all_pages("santander_gastos")
+    """Carga gastos tarjeta (Santander + Falabella CMR) — paginación INLINE
+    para evitar módulo cacheado en Streamlit Cloud. La columna 'fuente'
+    distingue el origen de cada fila (santander_tarjeta / falabella_tarjeta)."""
+    data = _fetch_all_pages("santander_gastos") + _fetch_all_pages("falabella_gastos")
     df = pd.DataFrame(data)
     if not df.empty and "fecha" in df.columns:
         df["fecha"] = pd.to_datetime(df["fecha"])

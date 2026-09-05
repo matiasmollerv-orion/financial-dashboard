@@ -42,7 +42,11 @@ jobs:
       # propaga el exit code, así el failure tracker sigue funcionando.
       - name: Run Santander update (gastos + cuenta corriente)
         id: santander
-        run: python -m intelligence.pipeline_stats --script load_santander --table santander_gastos -- python load_santander.py --days 14 || echo "santander" >> /tmp/failures.txt
+        run: python -m intelligence.pipeline_stats --script load_santander --table santander_gastos,santander_cuenta -- python load_santander.py --days 14 || echo "santander" >> /tmp/failures.txt
+
+      - name: Run Falabella CMR update (tarjeta de crédito)
+        id: falabella
+        run: python -m intelligence.pipeline_stats --script load_falabella --table falabella_gastos -- python load_falabella.py --days 35 || echo "falabella" >> /tmp/failures.txt
 
       - name: Run Racional ventas update
         id: ventas

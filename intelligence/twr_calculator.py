@@ -75,6 +75,8 @@ def get_ticker_meta(plataforma: str = None) -> dict:
       None/"Todo"   → todos los tickers
       "Racional Internacional" → mercado=internacional (sin _STG)
       "Racional Nacional"      → mercado=nacional sin sufijo _STG
+      "Racional (Todo)"        → internacional + nacional, sin _STG, sin crypto
+                                  (para comparar contra el YTD que reporta la app de Racional)
       "Santander Corredora"    → tickers con sufijo _STG
       "Crypto (Buda)"          → mercado=crypto
     """
@@ -88,6 +90,8 @@ def get_ticker_meta(plataforma: str = None) -> dict:
             if plataforma == "Racional Internacional" and mercado != "internacional":
                 continue
             elif plataforma == "Racional Nacional" and (mercado != "nacional" or tk.endswith("_STG")):
+                continue
+            elif plataforma == "Racional (Todo)" and (mercado == "crypto" or tk.endswith("_STG")):
                 continue
             elif plataforma == "Santander Corredora" and not tk.endswith("_STG"):
                 continue
@@ -205,6 +209,10 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
             if not rac.empty:
                 rac = rac[rac["mercado"] == "nacional"]
             buda = pd.DataFrame()
+        elif plataforma == "Racional (Todo)":
+            if not rac.empty:
+                rac = rac[rac["mercado"].isin(["internacional", "nacional"])]
+            buda = pd.DataFrame()  # no incluir crypto (Racional no lo reporta)
         elif plataforma == "Santander Corredora":
             rac = pd.DataFrame()   # Santander no tiene transacciones en Racional
             buda = pd.DataFrame()
@@ -378,9 +386,21 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
     portfolio_value = valor_df.sum(axis=1)
 
     # 8. Calcular flujos netos diarios en CLP (con tipo de cambio del día)
+    #
+    # PORTFOLIO_CL se excluye del flujo: es el aporte agregado a "Portafolio
+    # Acciones nacionales" de Racional, que reparte la plata entre ~20 acciones
+    # sin informar cuál recibió cuánto. qty_df nunca refleja ese aporte como
+    # acciones nuevas (no hay forma de saber en qué se convirtió), así que si
+    # lo contamos como flujo de caja creamos un arrastre fantasma: la fórmula
+    # (V_curr - F)/V_prev resta un depósito que nunca aparece como crecimiento
+    # de valor, hundiendo el TWR nacional artificialmente (detectado: -12.94%
+    # YTD 2026 vs el ~9.6% que reporta la propia Racional, con CLP 3.4M de
+    # depósitos "fantasma" acumulados solo en lo que va del año).
     flujo = pd.Series(0.0, index=dates)
     if not rac.empty:
         for _, row in rac.iterrows():
+            if row["ticker"] == "PORTFOLIO_CL":
+                continue
             fecha = row["fecha"].normalize()
             if fecha not in flujo.index:
                 continue
