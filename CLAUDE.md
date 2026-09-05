@@ -7,6 +7,18 @@
 - Los secrets de Streamlit Cloud están configurados en el panel de Streamlit Cloud (no en .env)
 - Si el dashboard no refleja cambios → limpiar caché: menú ☰ → "Clear cache"
 
+### ⚠️ SIN PUSH, NO EXISTE (pasó real 2026-09: semanas de trabajo sin subir)
+Claude por diseño no hace `git commit`/`git push` salvo que Matías lo pida
+explícitamente — así que el trabajo se puede quedar semanas como cambios
+locales sin que Streamlit Cloud vea nada, sin ningún error visible (todo
+funciona local, el dashboard real simplemente no cambia). Pasó real:
+Falabella CMR + fixes de TWR + limpieza de duplicados quedaron completos
+y verificados localmente, pero invisibles en producción hasta que Matías
+preguntó directamente por qué no aparecían.
+**Antes de dar por "terminada" cualquier tarea de código en este proyecto,
+correr `git status` — si hay cambios sin commitear, avisarle a Matías y
+preguntar si se suben.** No asumir que "ya quedó" solo porque corre local.
+
 ## Automatización de datos
 - **GitHub Actions**: `.github/workflows/daily-update.yml` — corre todos los días a las 8am Chile (11:00 UTC)
 - **LaunchAgent macOS**: `com.financial.dashboard.weekly.plist` — corre todos los días a las 7am si el Mac está encendido
