@@ -158,7 +158,7 @@ def fetch_all_compras(page_size=1000):
     while True:
         start = page * page_size
         r = (sb.table("racional_transacciones")
-               .select("fecha,ticker,monto_usd,monto_clp,mercado")
+               .select("fecha,ticker,monto_usd,monto_clp,mercado,fuente")
                .eq("tipo", "compra")
                .range(start, start + page_size - 1).execute())
         all_rows.extend(r.data)
@@ -174,6 +174,36 @@ def make_key(row):
     return ("intl", row["fecha"], row["ticker"], str(round(float(row.get("monto_usd") or 0), 2)))
 existing_keys = set(make_key(r) for r in existing_rows)
 print(f"   Ya en BD: {len(existing_keys)} compras\n")
+
+# Suma de fills de PDF DriveWealth ya cargados por (fecha, ticker) — para
+# detectar el MISMO bug de duplicados pero en la dirección contraria: acá
+# insertamos el correo "Invertiste en" (1 fila, monto total), pero si el
+# PDF ya insertó ese trade partido en fills (load_racional_pdf.py corrió
+# primero), el monto total NUNCA calza con ninguna fila individual — el
+# check de arriba (make_key) no lo detecta. Encontrado real 2026-09-04:
+# NU 25/08 y FTEC 24/08 duplicados así, tras el fix de load_racional_pdf.py
+# que solo protegía la dirección opuesta.
+pdf_fill_sums = {}
+for r in existing_rows:
+    if r.get("fuente") != "racional_pdf_drivewealth":
+        continue
+    if r.get("mercado") == "nacional":
+        gkey = ("nac", r["fecha"])
+        monto = round(float(r.get("monto_clp") or 0), 0)
+    else:
+        gkey = ("intl", r["fecha"], r["ticker"])
+        monto = round(float(r.get("monto_usd") or 0), 2)
+    pdf_fill_sums[gkey] = pdf_fill_sums.get(gkey, 0) + monto
+
+
+def es_duplicado_de_pdf_ya_cargado(row) -> bool:
+    if row.get("mercado") == "nacional":
+        gkey = ("nac", row["fecha"])
+        monto_email = round(float(row.get("monto_clp") or 0), 0)
+    else:
+        gkey = ("intl", row["fecha"], row["ticker"])
+        monto_email = round(float(row.get("monto_usd") or 0), 2)
+    return abs(pdf_fill_sums.get(gkey, -999999) - monto_email) < 0.01
 
 # ── Procesar e insertar ───────────────────────────────────
 def process_batch(msgs, parse_fn, label):
@@ -192,6 +222,9 @@ def process_batch(msgs, parse_fn, label):
 
         key = make_key(row)
         if key in existing_keys:
+            skip += 1
+            continue
+        if es_duplicado_de_pdf_ya_cargado(row):
             skip += 1
             continue
 

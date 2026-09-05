@@ -102,12 +102,25 @@ msgs = search_emails(service, f"from:racional subject:vendiste{DATE_FILTER}",
 print(f"\n📧 {len(msgs)} correos 'Vendiste' encontrados")
 
 # ── Ver ventas ya cargadas para no duplicar ───────────────
-existing = sb.table("racional_transacciones").select("fecha,ticker,monto_usd").eq("tipo","venta").execute()
+existing = sb.table("racional_transacciones").select("fecha,ticker,monto_usd,fuente").eq("tipo","venta").execute()
 existing_keys = set(
     (r["fecha"], r["ticker"], str(round(float(r["monto_usd"] or 0), 2)))
     for r in existing.data
 )
 print(f"   Ya en BD: {len(existing_keys)} ventas")
+
+# Suma de fills de PDF DriveWealth ya cargados por (fecha, ticker) — mismo
+# problema que en load_racional.py: si load_racional_pdf.py ya insertó esta
+# venta partida en fills, el monto total del correo "Vendiste" nunca calza
+# con ninguna fila individual y el check de arriba no lo agarra. Encontrado
+# real 2026-09-04: FTEC 24/08 duplicado así (correo $496.00 = fills
+# $280.88+$215.12, ambos insertados).
+pdf_fill_sums = {}
+for r in existing.data:
+    if r.get("fuente") != "racional_pdf_drivewealth":
+        continue
+    gkey = (r["fecha"], r["ticker"])
+    pdf_fill_sums[gkey] = pdf_fill_sums.get(gkey, 0) + round(float(r.get("monto_usd") or 0), 2)
 
 # ── Parsear e insertar ────────────────────────────────────
 ok = 0
@@ -131,6 +144,10 @@ for m in msgs:
     # Deduplicar
     key = (fecha, row["ticker"], str(round(row["monto_usd"] or 0, 2)))
     if key in existing_keys:
+        skip += 1
+        continue
+    gkey = (fecha, row["ticker"])
+    if abs(pdf_fill_sums.get(gkey, -999999) - round(float(row["monto_usd"] or 0), 2)) < 0.01:
         skip += 1
         continue
 

@@ -54,6 +54,12 @@ TIPO_MAP = {
     "BTC": "Crypto", "ETH": "Crypto",
     # Santander (acciones inputadas)
     "ENELCHILE_STG": "Acción", "ENJOY_STG": "Acción", "LTM_STG": "Acción",
+    # Caja no invertida (nacional e internacional) — agregado 2026-09-04
+    # tras reconciliación con cartolas reales: el portafolio de Racional
+    # SIEMPRE tiene algo de efectivo sin invertir (dividendos, remanentes de
+    # aportes), y hasta ahora nunca lo trackeábamos (gap de ~$1,86M CLP
+    # encontrado en la reconciliación de agosto).
+    "CAJA_CLP": "Efectivo", "DWBDS": "Efectivo",
 }
 
 PAIS_MAP = {
@@ -114,6 +120,8 @@ PAIS_MAP = {
     "BTC": "Criptomonedas", "ETH": "Criptomonedas",
     # Santander (acciones inputadas)
     "ENELCHILE_STG": "Chile", "ENJOY_STG": "Chile", "LTM_STG": "Chile",
+    # Caja
+    "CAJA_CLP": "Chile", "DWBDS": "EE.UU.",
 }
 
 # ── SECTOR MAP ────────────────────────────────────────────
@@ -184,6 +192,8 @@ SECTOR_MAP = {
     "LTM_STG": "Aviación",
     # Otros
     "PURR": "Otro", "VCX": "Otro",
+    # Caja
+    "CAJA_CLP": "Liquidez", "DWBDS": "Liquidez",
 }
 
 

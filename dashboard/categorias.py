@@ -46,6 +46,10 @@ REGLAS = [
      "Impuestos", "Timbre"),
     (r"\bIVA\b(?!.*DEVOL)",                      # IVA (no devolución)
      "Impuestos", "IVA"),
+    (r"^IMPUESTOS$|^IMPUESTOS\b",                # línea de cierre "IMPUESTOS" sin más detalle
+     "Impuestos", "Otros"),
+    (r"SERVICIO USO INTERNACIONAL",               # cargo por uso de tarjeta en el extranjero
+     "Fixed Costs", "Comisiones"),
 
     # ── 4. FIXED COSTS ───────────────────────────────────
 
@@ -112,6 +116,8 @@ REGLAS = [
     (r"NETFLIX|SPOTIFY|AMAZON PRIME|DISNEY\+?|HBO\b|APPLE.*TV|YOUTUBE PREMIUM|PARAMOUNT|CRUNCHYROLL|DEEZER|TIDAL",
      "Fixed Costs", "Servicios"),
     (r"ICLOUD|GOOGLE ONE|GOOGLE STORAGE|DROPBOX|MICROSOFT 365|OFFICE 365|ADOBE\b|ANTIVIRUS|NORTON|MCAFEE",
+     "Fixed Costs", "Servicios"),
+    (r"ANTHROPIC|CLAUDE SUB|OPENAI\b|CHATGPT\b",
      "Fixed Costs", "Servicios"),
     (r"DIARIO FINANCIERO|EL MERCURIO|REVISTA\b|SUSCRIPCION\b",
      "Fixed Costs", "Servicios"),
@@ -446,6 +452,21 @@ REGLAS = [
     (r"REDGLOBA",
      "Fixed Costs", "Servicios"),
 
+    # Catch-all: compra en el extranjero. Dos formatos reales distintos:
+    # Santander pone el código de país al FINAL ("Y04 DUBROVNIK HR", "GALATA
+    # KULESI ISTANBUL TU"); Falabella pone la MONEDA extranjera en el MEDIO
+    # del texto ("Grandbazaar CL TRY 16190,0", "Mpontouris S CL EUR 22,4").
+    # El nombre real del comercio (croata/turco/bosnio/griego) nunca va a
+    # matchear ningún keyword — el código de país/moneda sí nos dice que es
+    # viaje. Sin ancla de fin de string para cubrir ambos formatos.
+    # Deliberadamente SIN "US"/"CLP": esos ya tienen reglas específicas arriba
+    # (Anthropic, Apple, Amazon no son viaje solo por facturar en USD) — y
+    # esta regla va AL FINAL de la lista, así que si algo más específico ya
+    # matcheó antes, esto nunca lo pisa.
+    (r"\b(TU|HR|BI|GR|NL|ES|PT|IT|FR|DE|AT|CH|BE|GB|UK|PE|AE|SW|TR|JP|KR|CN|MX|CO|BR|UY|PY|EC|CR|PA|DO"
+     r"|TRY|EUR|GBP|CHF|HRK|BAM|SEK|NOK|DKK)\b",
+     "Guilt Free", "Viajes"),
+
 ]
 
 # Compilar patrones una sola vez (case-insensitive)
@@ -473,6 +494,16 @@ def categorizar_df(df):
     """
     Agrega columnas 'top_level' y 'subcategoria' a un DataFrame
     que tenga columna 'descripcion'.
+
+    Red de seguridad con 'moneda' (dato estructurado, no texto adivinado):
+    en el estado de cuenta Santander, moneda='USD' identifica el statement
+    de compras en el EXTRANJERO — es la fuente de verdad, más confiable que
+    parsear código de país/comercio del texto (que puede tener cualquier
+    formato/idioma, ej. croata/turco/bosnio). Si después de aplicar las
+    reglas de texto el resultado sigue siendo el default ("Sin Categorizar",
+    "Otros"), y la fila es moneda=USD, se fuerza a Guilt Free/Viajes —
+    "toda compra fuera de Chile es viaje", salvo que ya haya matcheado algo
+    más específico antes (Anthropic, Pago TC, Abono de Divisas, etc.).
     """
     import pandas as pd
     if "descripcion" not in df.columns:
@@ -482,4 +513,11 @@ def categorizar_df(df):
     cats = df["descripcion"].apply(categorizar)
     df["top_level"]    = cats.apply(lambda x: x[0])
     df["subcategoria"] = cats.apply(lambda x: x[1])
+
+    if "moneda" in df.columns:
+        es_default = (df["top_level"] == "Sin Categorizar") & (df["subcategoria"] == "Otros")
+        es_usd = df["moneda"].astype(str).str.upper() == "USD"
+        mask = es_default & es_usd
+        df.loc[mask, "top_level"] = "Guilt Free"
+        df.loc[mask, "subcategoria"] = "Viajes"
     return df
