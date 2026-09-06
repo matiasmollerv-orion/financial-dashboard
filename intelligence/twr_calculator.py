@@ -34,6 +34,20 @@ from cartera_base import ACCIONES_CL, STOCKS_INTL, CRYPTO, SNAPSHOT_DATE
 
 USD_CLP_FALLBACK = 901.76  # Fallback si yfinance falla
 
+# Caja no invertida (CAJA_CLP nacional, DWBDS internacional) — no son
+# instrumentos que coticen en bolsa, no tiene sentido pedirle precio a
+# yfinance (404 real, encontrado 2026-09-04 al agregar estos tickers al
+# snapshot). Precio constante = el que trae cartera_base.py al momento
+# del snapshot; mismo limitante que CFMITNIPSA (stale entre refreshes
+# mensuales), pero mejor que perder el valor por completo tratándolo
+# como NaN/0 silenciosamente.
+CASH_TICKERS = {"CAJA_CLP", "DWBDS"}
+CASH_PRICES = {
+    row["ticker"]: row["precio_actual"]
+    for row in ACCIONES_CL + STOCKS_INTL
+    if row["ticker"] in CASH_TICKERS
+}
+
 
 def fetch_usdclp_daily(start: str, end: str) -> pd.Series:
     """Descarga tipo de cambio USD/CLP diario. Retorna Series con index=fecha."""
@@ -330,8 +344,9 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
                 mask = qty_df.index >= row["fecha"].normalize()
                 qty_df.loc[mask, tk] = qty_df.loc[mask, tk].astype(np.float64) + float(row["cantidad"])
 
-    # 6. Descargar precios históricos
-    yf_map = {tk: yf_ticker_for(tk, meta[tk]["mercado"]) for tk in all_tickers}
+    # 6. Descargar precios históricos (caja: precio constante, sin yfinance)
+    tickers_mercado = [tk for tk in all_tickers if tk not in CASH_TICKERS]
+    yf_map = {tk: yf_ticker_for(tk, meta[tk]["mercado"]) for tk in tickers_mercado}
     yf_unique = list(set(yf_map.values()))
 
     start_buf = (pd.Timestamp(start_date) - timedelta(days=5)).strftime("%Y-%m-%d")
@@ -340,19 +355,22 @@ def compute_twr(start_date: str = SNAPSHOT_DATE,
     if verbose:
         print(f"   📡 Descargando precios de {len(yf_unique)} tickers…")
 
-    prices_raw = fetch_prices(yf_unique, start_buf, end_buf)
+    prices_raw = fetch_prices(yf_unique, start_buf, end_buf) if yf_unique else pd.DataFrame()
 
-    if prices_raw.empty:
+    if prices_raw.empty and tickers_mercado:
         print("❌ No se pudieron bajar precios")
         return None
 
-    prices = pd.DataFrame(index=prices_raw.index)
-    for tk in all_tickers:
+    prices = pd.DataFrame(index=prices_raw.index if not prices_raw.empty else dates)
+    for tk in tickers_mercado:
         yf_tk = yf_map[tk]
         if yf_tk in prices_raw.columns:
             prices[tk] = prices_raw[yf_tk]
         else:
             prices[tk] = np.nan
+    for tk in all_tickers:
+        if tk in CASH_TICKERS:
+            prices[tk] = CASH_PRICES.get(tk, 0.0)
 
     # Re-indexar al calendario diario + forward fill (días sin precio = previo)
     prices = prices.reindex(dates).ffill().bfill()
