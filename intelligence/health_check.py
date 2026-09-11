@@ -83,7 +83,7 @@ def build_alert_html(checks: list[dict]) -> str:
 
     <p><strong>Causa más común</strong>: token Gmail expirado. Para regenerarlo:</p>
     <ol>
-      <li>En tu Mac, abre terminal y corre: <code style="background:#1e2130; padding:4px 8px; border-radius:4px;">cd ~/Documents/Claude/FinancialDashboard && python load_santander.py --days 1</code></li>
+      <li>En tu Mac, abre terminal y corre: <code style="background:#1e2130; padding:4px 8px; border-radius:4px;">cd ~/Projects/financial-dashboard && python load_santander.py --days 1</code></li>
       <li>Se abrirá el navegador, autentica con tu Gmail</li>
       <li>Después convierte el nuevo token a base64 y actualízalo en GitHub Secrets como GMAIL_TOKEN_PICKLE: <code>base64 -i config/token.pickle | pbcopy</code></li>
       <li>Anda a https://github.com/matiasmollerv-orion/financial-dashboard/settings/secrets/actions y pega como GMAIL_TOKEN_PICKLE</li>

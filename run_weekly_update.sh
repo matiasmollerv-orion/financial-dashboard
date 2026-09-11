@@ -4,7 +4,7 @@
 # Descarga nuevos PDFs de Gmail y actualiza Supabase
 # ============================================================
 
-SCRIPT_DIR="$HOME/Documents/Claude/FinancialDashboard"
+SCRIPT_DIR="$HOME/Projects/financial-dashboard"
 LOG_FILE="$SCRIPT_DIR/logs/weekly_update.log"
 VENV="$SCRIPT_DIR/venv/bin/python"
 

@@ -7,15 +7,15 @@
 export HOME="/Users/matiasmollerv"
 export PATH="/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
 
-cd /Users/matiasmollerv/Documents/Claude/FinancialDashboard
+cd /Users/matiasmollerv/Projects/financial-dashboard
 
 # Activar entorno virtual
-source /Users/matiasmollerv/Documents/Claude/FinancialDashboard/venv/bin/activate
+source /Users/matiasmollerv/Projects/financial-dashboard/venv/bin/activate
 
 # Iniciar Streamlit
-exec /Users/matiasmollerv/Documents/Claude/FinancialDashboard/venv/bin/python \
+exec /Users/matiasmollerv/Projects/financial-dashboard/venv/bin/python \
     -m streamlit run \
-    /Users/matiasmollerv/Documents/Claude/FinancialDashboard/dashboard/app.py \
+    /Users/matiasmollerv/Projects/financial-dashboard/dashboard/app.py \
     --server.port=8501 \
     --server.headless=true \
     --browser.gatherUsageStats=false

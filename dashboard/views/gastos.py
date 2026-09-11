@@ -45,7 +45,7 @@ def render():
             st.markdown("""
             **Ejecuta en tu terminal:**
             ```bash
-            cd ~/Documents/Claude/FinancialDashboard
+            cd ~/Projects/financial-dashboard
             source venv/bin/activate
             python load_santander.py
             ```
