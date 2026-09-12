@@ -13,23 +13,23 @@ from dashboard.utils import (
 from dashboard.categorias_cuenta import categorizar_df
 
 
-# Mismos colores que gastos.py
+# Mismos colores que gastos.py (paleta "metálica mate")
 TOP_LEVEL_COLORS = {
     "Fixed Costs":     "#7592CC",
-    "Guilt Free":      "#f28e2b",
-    "Investments":     "#59a14f",
-    "Impuestos":       "#e15759",
-    "Familia":         "#76b7b2",
-    "Ingresos":        "#1f9d55",
+    "Guilt Free":      "#C78A66",
+    "Investments":     "#73BE8F",
+    "Impuestos":       "#C76666",
+    "Familia":         "#75CCC6",
+    "Ingresos":        "#76C766",
     "Excluir":         "#70786B",
-    "Sin Categorizar": "#7f7f7f",
+    "Sin Categorizar": "#70786B",
 }
 
 CONTA_COLORS = {
-    "gasto":    "#e15759",
-    "ingreso":  "#59a14f",
+    "gasto":    "#C76666",
+    "ingreso":  "#73BE8F",
     "excluir":  "#70786B",
-    "neutro":   "#76b7b2",
+    "neutro":   "#75CCC6",
 }
 
 

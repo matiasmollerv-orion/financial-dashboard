@@ -156,7 +156,7 @@ def render():
         mode="lines",
         line=dict(color="#73BE8F", width=1, dash="dot"),
         fill="tonexty",
-        fillcolor="rgba(46,204,113,0.08)",
+        fillcolor="rgba(115,190,143,0.08)",
     ))
     fig.add_trace(go.Scatter(
         x=años_label, y=pat_base,
@@ -171,7 +171,7 @@ def render():
         mode="lines",
         line=dict(color="#C76666", width=1, dash="dot"),
         fill="tonexty",
-        fillcolor="rgba(231,76,60,0.08)",
+        fillcolor="rgba(199,102,102,0.08)",
     ))
 
     # Marcar hitos

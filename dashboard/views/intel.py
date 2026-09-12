@@ -19,12 +19,12 @@ from database.supabase_client import get_client
 # Colores por tipo/severidad
 SEV_COLOR = {
     "critica": "#683427", "alta": "#C76666", "media": "#D2AB5D",
-    "baja":    "#3498db", "info": "#95a5a6",
+    "baja":    "#7592CC", "info": "#70786B",
 }
 TIPO_COLOR = {
     "riesgo":      "#C76666",
     "oportunidad": "#73BE8F",
-    "neutro":      "#95a5a6",
+    "neutro":      "#70786B",
 }
 CONF_ICON = {
     "alta":  "🟢", "media": "🟡", "baja":  "🟠", "ruido": "⬛",
@@ -128,7 +128,7 @@ def render_alert_card(row: pd.Series):
       {sev.upper()} · {cat}
     </span>
   </div>
-  <div style="color:#a0aec0; font-size:0.85rem; margin-top:4px;">{row.get('mensaje','')}</div>
+  <div style="color:#9DA698; font-size:0.85rem; margin-top:4px;">{row.get('mensaje','')}</div>
   <div style="color:#70786B; font-size:0.8rem; margin-top:6px;">💡 {row.get('sugerencia','')}</div>
 </div>
 """,
@@ -174,7 +174,7 @@ def render_news_card(row: pd.Series):
   <div style="color:#70786B; font-size:0.75rem; margin-top:2px;">
     📰 {fuente} · 📅 {fecha} · 🎯 relev: {rel} <span style="font-family:monospace;">{rel_bar}</span> · ⏰ {horiz}
   </div>
-  <div style="color:#a0aec0; font-size:0.9rem; margin-top:8px;">{resumen}</div>
+  <div style="color:#9DA698; font-size:0.9rem; margin-top:8px;">{resumen}</div>
 """,
             unsafe_allow_html=True,
         )
@@ -338,7 +338,7 @@ def render():
                     f"- **{row['titulo']}** "
                     f"<span style='color:#70786B; font-size:0.8rem;'>"
                     f"({row['fuente']} · {fecha_str} · relev preliminar: {row.get('relevancia_preliminar',0)})</span><br>"
-                    f"<span style='color:#a0aec0; font-size:0.85rem;'>{(row.get('resumen') or '')[:200]}</span>"
+                    f"<span style='color:#9DA698; font-size:0.85rem;'>{(row.get('resumen') or '')[:200]}</span>"
                     + (f"<br>📌 {tk_str}" if tk_str else ""),
                     unsafe_allow_html=True,
                 )

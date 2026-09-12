@@ -351,7 +351,7 @@ def render():
       <div style="color:{'#73BE8F' if diff > 0 else '#C76666'}; font-size:1.5rem; font-weight:700;">{diff:+.2f}pp {timing_emoji}</div>
     </div>
   </div>
-  <div style="color:#a0aec0; font-size:0.9rem;">
+  <div style="color:#9DA698; font-size:0.9rem;">
     {timing_msg}
   </div>
   <div style="color:#666; font-size:0.8rem; margin-top:8px;">
@@ -376,10 +376,10 @@ def render():
 <div style="background:#191C16; padding:16px 18px; border-radius:10px; border-left: 4px solid #7592CC; margin-bottom:14px;">
   <div style="color:#70786B; font-size:0.85rem; margin-bottom:4px;">#{m['id']} · {m['titulo']}</div>
   <div style="color:#EDEEE8; font-size:1.8rem; font-weight:700; margin-bottom:10px;">{m['valor']}</div>
-  <div style="color:#a0aec0; font-size:0.85rem; margin-bottom:6px;">
+  <div style="color:#9DA698; font-size:0.85rem; margin-bottom:6px;">
     📐 <strong>Fórmula:</strong> <code style="background:#191C16; padding:2px 6px; border-radius:4px;">{m['formula']}</code>
   </div>
-  <div style="color:#a0aec0; font-size:0.85rem;">
+  <div style="color:#9DA698; font-size:0.85rem;">
     📖 <strong>Descripción:</strong> {m['descripcion']}
   </div>
 </div>
@@ -558,7 +558,7 @@ def render():
                         barmode="stack",
                         category_orders={"periodo": orden_periodos},
                         labels={"periodo": "", "monto_clp": "CLP", "mercado": "Mercado"},
-                        color_discrete_map={"nacional": "#7592CC", "internacional": "#f28e2b"},
+                        color_discrete_map={"nacional": "#7592CC", "internacional": "#D2AB5D"},
                         custom_data=["monto_fmt"],
                     )
                     fig2.update_traces(
@@ -940,7 +940,7 @@ def render():
             fig_cv = px.bar(
                 grp_cv, x="_mes", y="monto_plot", color="tipo",
                 barmode="relative",
-                color_discrete_map={"compra": "#7592CC", "venta": "#e15759"},
+                color_discrete_map={"compra": "#7592CC", "venta": "#C76666"},
                 labels={"_mes": "", "monto_plot": "USD", "tipo": ""},
             )
             fig_cv.update_layout(
