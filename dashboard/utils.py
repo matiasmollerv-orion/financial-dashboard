@@ -96,12 +96,12 @@ def render_eye_toggle():
 
 COLORS = {
     "primary": "#1f77b4",
-    "green": "#2ecc71",
-    "red": "#e74c3c",
-    "yellow": "#f39c12",
+    "green": "#73BE8F",
+    "red": "#C76666",
+    "yellow": "#D2AB5D",
     "gray": "#95a5a6",
-    "bg": "#0e1117",
-    "card": "#1e2130",
+    "bg": "#10130E",
+    "card": "#191C16",
 }
 
 # Paleta para gráficos de activos (flat-UI original, sigue en uso en el
@@ -148,24 +148,25 @@ def apply_global_styles():
     """Aplica CSS global al dashboard."""
     st.markdown("""
     <style>
-        /* Métricas */
+        /* Métricas nativas (st.metric, donde no se usa styled_metric) */
         [data-testid="metric-container"] {
-            background-color: #1e2130;
-            border: 1px solid #2d3250;
+            background-color: #191C16;
+            border: 1.5px solid #2D332B;
             border-radius: 10px;
             padding: 12px 16px;
         }
         [data-testid="metric-container"] label {
             font-size: 0.8rem !important;
-            color: #8892b0 !important;
+            color: #70786B !important;
         }
         [data-testid="metric-container"] [data-testid="stMetricValue"] {
             font-size: 1.4rem !important;
             font-weight: 700 !important;
+            color: #EDEEE8 !important;
         }
         /* Sidebar */
         [data-testid="stSidebar"] {
-            background-color: #131720;
+            background-color: #0D0F0B;
         }
         /* Tablas */
         .dataframe { font-size: 0.85rem !important; }
@@ -173,32 +174,38 @@ def apply_global_styles():
         .section-title {
             font-size: 1.1rem;
             font-weight: 600;
-            color: #ccd6f6;
-            border-left: 3px solid #4e79a7;
+            color: #EDEEE8;
+            border-left: 3px solid #D2AB5D;
             padding-left: 10px;
             margin: 20px 0 12px 0;
         }
         /* Cards */
         .info-card {
-            background-color: #1e2130;
+            background-color: #191C16;
+            border: 1.5px solid #2D332B;
             border-radius: 10px;
             padding: 16px;
             margin-bottom: 12px;
         }
 
-        /* ── Stat cards (prototipo 2026-09) ──────────────────
+        /* ── Stat cards (v2 2026-09) ──────────────────────────
            Tarjeta HTML propia, mismo look que st.metric pero con
            una 3ra línea de caption chica — cosa que st.metric no
            permite (solo label + value + delta).
            Paleta "metálica mate" sacada PIXEL A PIXEL de la captura
            de referencia de Matías (image-1789218865202.png), no a ojo:
-             fondo      #11140F  (esquina + interior de tarjeta)
-             valor      #EDEEE8  (blanco cálido)
-             label      #70786B  (gris-sage apagado)
-             caption    #9DA698  (gris-sage más claro)
-             verde      #73BE8F  (real, +7.0% / +8.01%)
-             ámbar txt  #EACF90  (real, texto dentro del callout)
-             ámbar line #D2AB5D  (real, borde izquierdo del callout)
+             fondo página     #10130E  (esquina de la imagen)
+             fondo tarjeta    #191C16  (interior, un poco más claro que la página)
+             borde/brillo     #2D332B  (aro de brillo en el canto — ESTE es el
+                               "cambio de tono fuerte" que Matías pidió; v1 tenía
+                               #262922, casi invisible, y el fondo mal — quedaba
+                               igual al de la página en vez de un poco más claro)
+             valor            #EDEEE8  (blanco cálido)
+             label            #70786B  (gris-sage apagado)
+             caption          #9DA698  (gris-sage más claro)
+             verde            #73BE8F  (real, +7.0% / +8.01%)
+             ámbar texto      #EACF90  (real, texto dentro del callout)
+             ámbar línea      #D2AB5D  (real, borde izquierdo del callout)
            Azul y rojo NO estaban en la captura (solo mostraba verde/
            ámbar) — derivados con la misma fórmula (HSL L~60%, S~50-55%)
            para que la familia se vea consistente. Contraste vs fondo
@@ -209,8 +216,8 @@ def apply_global_styles():
            instalado acá) — mitigación: el signo +/- siempre va en el
            texto también, el color nunca es el único canal. */
         .stat-card {
-            background-color: #11140F;
-            border: 1px solid #262922;
+            background-color: #191C16;
+            border: 1.5px solid #2D332B;
             border-radius: 10px;
             padding: 14px 16px;
             height: 100%;

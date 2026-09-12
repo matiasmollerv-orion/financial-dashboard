@@ -1,9 +1,11 @@
 [theme]
+# Paleta "metálica mate" sacada pixel a pixel de la captura de referencia
+# (image-1789218865202.png) — reemplaza el dark theme azulado original.
 base = "dark"
-primaryColor = "#4e79a7"
-backgroundColor = "#0e1117"
-secondaryBackgroundColor = "#1e2130"
-textColor = "#ccd6f6"
+primaryColor = "#D2AB5D"
+backgroundColor = "#10130E"
+secondaryBackgroundColor = "#191C16"
+textColor = "#EDEEE8"
 
 [server]
 headless = true

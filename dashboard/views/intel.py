@@ -18,12 +18,12 @@ from database.supabase_client import get_client
 
 # Colores por tipo/severidad
 SEV_COLOR = {
-    "critica": "#8b0000", "alta": "#e74c3c", "media": "#f39c12",
+    "critica": "#683427", "alta": "#C76666", "media": "#D2AB5D",
     "baja":    "#3498db", "info": "#95a5a6",
 }
 TIPO_COLOR = {
-    "riesgo":      "#e74c3c",
-    "oportunidad": "#2ecc71",
+    "riesgo":      "#C76666",
+    "oportunidad": "#73BE8F",
     "neutro":      "#95a5a6",
 }
 CONF_ICON = {
@@ -121,15 +121,15 @@ def render_alert_card(row: pd.Series):
 
     st.markdown(
         f"""
-<div style="border-left: 4px solid {color}; background:#1e2130; padding:10px 14px; border-radius:6px; margin-bottom:8px;">
+<div style="border-left: 4px solid {color}; background:#191C16; padding:10px 14px; border-radius:6px; margin-bottom:8px;">
   <div style="display:flex; justify-content:space-between; align-items:center;">
-    <strong style="color:#ccd6f6;">{titulo}</strong>
+    <strong style="color:#EDEEE8;">{titulo}</strong>
     <span style="background:{color}22; color:{color}; padding:2px 8px; border-radius:10px; font-size:0.75rem;">
       {sev.upper()} · {cat}
     </span>
   </div>
   <div style="color:#a0aec0; font-size:0.85rem; margin-top:4px;">{row.get('mensaje','')}</div>
-  <div style="color:#8892b0; font-size:0.8rem; margin-top:6px;">💡 {row.get('sugerencia','')}</div>
+  <div style="color:#70786B; font-size:0.8rem; margin-top:6px;">💡 {row.get('sugerencia','')}</div>
 </div>
 """,
         unsafe_allow_html=True,
@@ -166,12 +166,12 @@ def render_news_card(row: pd.Series):
     with st.container():
         st.markdown(
             f"""
-<div style="border-left: 4px solid {color}; background:#1e2130; padding:12px 14px; border-radius:6px; margin-bottom:10px;">
+<div style="border-left: 4px solid {color}; background:#191C16; padding:12px 14px; border-radius:6px; margin-bottom:10px;">
   <div style="display:flex; justify-content:space-between; align-items:start; gap:10px;">
-    <strong style="color:#ccd6f6; flex:1;">{icon} {titulo}</strong>
+    <strong style="color:#EDEEE8; flex:1;">{icon} {titulo}</strong>
     {badge}
   </div>
-  <div style="color:#8892b0; font-size:0.75rem; margin-top:2px;">
+  <div style="color:#70786B; font-size:0.75rem; margin-top:2px;">
     📰 {fuente} · 📅 {fecha} · 🎯 relev: {rel} <span style="font-family:monospace;">{rel_bar}</span> · ⏰ {horiz}
   </div>
   <div style="color:#a0aec0; font-size:0.9rem; margin-top:8px;">{resumen}</div>
@@ -223,7 +223,7 @@ def render():
     if brief:
         with st.container():
             st.markdown(
-                f"<div style='background:#1e2130; padding:18px 22px; border-radius:10px; border-left: 4px solid #4e79a7;'>{brief}</div>",
+                f"<div style='background:#191C16; padding:18px 22px; border-radius:10px; border-left: 4px solid #7592CC;'>{brief}</div>",
                 unsafe_allow_html=True,
             )
     else:
@@ -336,7 +336,7 @@ def render():
                     pass
                 st.markdown(
                     f"- **{row['titulo']}** "
-                    f"<span style='color:#8892b0; font-size:0.8rem;'>"
+                    f"<span style='color:#70786B; font-size:0.8rem;'>"
                     f"({row['fuente']} · {fecha_str} · relev preliminar: {row.get('relevancia_preliminar',0)})</span><br>"
                     f"<span style='color:#a0aec0; font-size:0.85rem;'>{(row.get('resumen') or '')[:200]}</span>"
                     + (f"<br>📌 {tk_str}" if tk_str else ""),

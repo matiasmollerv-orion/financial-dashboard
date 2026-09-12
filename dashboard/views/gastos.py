@@ -9,22 +9,18 @@ import streamlit as st
 
 from dashboard.utils import (
     fmt_clp, fmt_clp_safe, metric_safe, amounts_hidden,
-    section_title, load_gastos, ASSET_COLORS,
+    section_title, load_gastos, ASSET_COLORS_MATTE,
 )
 from dashboard.categorias import categorizar_df
 
-# Paleta para subcategorías
-SUBCAT_COLORS = [
-    "#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f",
-    "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac",
-    "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
-    "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
-]
+# Paleta para subcategorías — reusa la familia metálica mate en vez de
+# un array flat-UI aparte
+SUBCAT_COLORS = ASSET_COLORS_MATTE
 
 TOP_LEVEL_COLORS = {
-    "Fixed Costs": "#4e79a7",
-    "Guilt Free":  "#f28e2b",
-    "Investments": "#59a14f",
+    "Fixed Costs": "#7592CC",  # azul
+    "Guilt Free":  "#C78A66",  # canela
+    "Investments": "#73BE8F",  # verde
 }
 
 
@@ -139,7 +135,7 @@ def render():
             hole=0.48,
             textinfo="label+percent",
             textfont_size=11,
-            marker=dict(colors=[TOP_LEVEL_COLORS.get(t, "#bab0ac") for t in grp_top["top_level"]]),
+            marker=dict(colors=[TOP_LEVEL_COLORS.get(t, "#70786B") for t in grp_top["top_level"]]),
             hovertemplate="<b>%{label}</b><br>%{customdata}<extra></extra>",
             customdata=grp_top["monto"].apply(fmt_clp),
         ))
@@ -150,7 +146,7 @@ def render():
             height=290,
             annotations=[dict(
                 text=f"<b>{fmt_clp_safe(total)}</b>",
-                x=0.5, y=0.5, font_size=12, showarrow=False, font_color="#ccd6f6"
+                x=0.5, y=0.5, font_size=12, showarrow=False, font_color="#EDEEE8"
             )],
         )
         st.plotly_chart(fig1, use_container_width=True)
@@ -179,12 +175,12 @@ def render():
             showlegend=False,
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#ccd6f6",
+            font_color="#EDEEE8",
             margin=dict(t=10, b=10, l=5, r=80),
             height=290,
             xaxis=dict(
                 tickformat=",.0f",
-                gridcolor="#2d3250",
+                gridcolor="#2D332B",
                 tickprefix="$",
             ),
             yaxis=dict(showgrid=False),
@@ -331,11 +327,11 @@ def render():
     fig3.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font_color="#ccd6f6",
+        font_color="#EDEEE8",
         margin=dict(t=10, b=10, l=10, r=10),
         height=400,
         xaxis=dict(showgrid=False, tickangle=-45),
-        yaxis=dict(gridcolor="#2d3250"),
+        yaxis=dict(gridcolor="#2D332B"),
         legend=dict(orientation="h", y=-0.25, font=dict(size=10)),
     )
 
@@ -487,17 +483,17 @@ def render():
                 trend, x="_mes", y="monto",
                 custom_data=["monto_fmt"],
                 labels={"_mes": "", "monto": ""},
-                color_discrete_sequence=["#4e79a7"],
+                color_discrete_sequence=["#7592CC"],
             )
             fig_t.update_traces(
                 hovertemplate="<b>%{x}</b><br>%{customdata[0]}<extra></extra>",
             )
             fig_t.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#ccd6f6", height=240,
+                font_color="#EDEEE8", height=240,
                 margin=dict(t=5, b=5, l=5, r=5),
                 xaxis=dict(showgrid=False, tickangle=-45),
-                yaxis=dict(gridcolor="#2d3250"),
+                yaxis=dict(gridcolor="#2D332B"),
             )
             st.plotly_chart(fig_t, use_container_width=True)
 

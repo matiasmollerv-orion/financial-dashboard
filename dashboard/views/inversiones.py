@@ -11,7 +11,7 @@ import streamlit as st
 from dashboard.utils import (
     fmt_clp, fmt_usd, fmt_pct,
     fmt_clp_safe, fmt_usd_safe, metric_safe, amounts_hidden,
-    section_title, ASSET_COLORS,
+    section_title, ASSET_COLORS_MATTE,
     load_cartera, load_racional, load_buda, get_usd_clp,
 )
 from dashboard.mappings import get_tipo, get_pais, get_sector
@@ -20,11 +20,11 @@ USD_CLP = get_usd_clp()
 
 # ── Escala de color con contraste real (rojo-blanco-verde) ──
 HEAT_SCALE = [
-    [0.00, "#8b0000"],   # -40% → rojo oscuro
-    [0.25, "#e74c3c"],   # -10% → rojo
-    [0.40, "#e8e8e8"],   #   0% → gris neutro  ← posición exacta de 0 en rango [-40,60]
-    [0.58, "#2ecc71"],   # +11% → verde
-    [1.00, "#1a6b35"],   # +60% → verde oscuro
+    [0.00, "#683427"],   # -40% → rojo oscuro (mate)
+    [0.25, "#C76666"],   # -10% → rojo
+    [0.40, "#4B5148"],   #   0% → gris neutro (mate)  ← posición exacta de 0 en rango [-40,60]
+    [0.58, "#73BE8F"],   # +11% → verde
+    [1.00, "#265E3B"],   # +60% → verde oscuro (mate)
 ]
 HEAT_RANGE = [-40, 60]   # 0% ↔ posición 40/100 = 0.40 en la escala
 
@@ -334,21 +334,21 @@ def render():
                 st.markdown("### ⏱ ¿Tu timing fue bueno?")
                 st.markdown(
                     f"""
-<div style="background:#1e2130; padding:18px; border-radius:10px; border-left: 4px solid {'#2ecc71' if diff > 0.5 else '#e74c3c' if diff < -0.5 else '#888'}; margin-bottom:14px;">
+<div style="background:#191C16; padding:18px; border-radius:10px; border-left: 4px solid {'#73BE8F' if diff > 0.5 else '#C76666' if diff < -0.5 else '#888'}; margin-bottom:14px;">
   <div style="display:flex; gap:30px; align-items:center; margin-bottom:12px;">
     <div>
-      <div style="color:#8892b0; font-size:0.85rem;">MWR (tu timing)</div>
-      <div style="color:#ccd6f6; font-size:1.5rem; font-weight:700;">{mwr_val:.2f}%</div>
+      <div style="color:#70786B; font-size:0.85rem;">MWR (tu timing)</div>
+      <div style="color:#EDEEE8; font-size:1.5rem; font-weight:700;">{mwr_val:.2f}%</div>
     </div>
-    <div style="color:#8892b0; font-size:1.5rem;">vs</div>
+    <div style="color:#70786B; font-size:1.5rem;">vs</div>
     <div>
-      <div style="color:#8892b0; font-size:0.85rem;">{twr_label} (portafolio)</div>
-      <div style="color:#ccd6f6; font-size:1.5rem; font-weight:700;">{twr_comp:.2f}%</div>
+      <div style="color:#70786B; font-size:0.85rem;">{twr_label} (portafolio)</div>
+      <div style="color:#EDEEE8; font-size:1.5rem; font-weight:700;">{twr_comp:.2f}%</div>
     </div>
-    <div style="color:#8892b0; font-size:1.5rem;">→</div>
+    <div style="color:#70786B; font-size:1.5rem;">→</div>
     <div>
-      <div style="color:#8892b0; font-size:0.85rem;">Diferencia</div>
-      <div style="color:{'#2ecc71' if diff > 0 else '#e74c3c'}; font-size:1.5rem; font-weight:700;">{diff:+.2f}pp {timing_emoji}</div>
+      <div style="color:#70786B; font-size:0.85rem;">Diferencia</div>
+      <div style="color:{'#73BE8F' if diff > 0 else '#C76666'}; font-size:1.5rem; font-weight:700;">{diff:+.2f}pp {timing_emoji}</div>
     </div>
   </div>
   <div style="color:#a0aec0; font-size:0.9rem;">
@@ -373,11 +373,11 @@ def render():
                     with col:
                         st.markdown(
                             f"""
-<div style="background:#1e2130; padding:16px 18px; border-radius:10px; border-left: 4px solid #4e79a7; margin-bottom:14px;">
-  <div style="color:#8892b0; font-size:0.85rem; margin-bottom:4px;">#{m['id']} · {m['titulo']}</div>
-  <div style="color:#ccd6f6; font-size:1.8rem; font-weight:700; margin-bottom:10px;">{m['valor']}</div>
+<div style="background:#191C16; padding:16px 18px; border-radius:10px; border-left: 4px solid #7592CC; margin-bottom:14px;">
+  <div style="color:#70786B; font-size:0.85rem; margin-bottom:4px;">#{m['id']} · {m['titulo']}</div>
+  <div style="color:#EDEEE8; font-size:1.8rem; font-weight:700; margin-bottom:10px;">{m['valor']}</div>
   <div style="color:#a0aec0; font-size:0.85rem; margin-bottom:6px;">
-    📐 <strong>Fórmula:</strong> <code style="background:#0e1117; padding:2px 6px; border-radius:4px;">{m['formula']}</code>
+    📐 <strong>Fórmula:</strong> <code style="background:#191C16; padding:2px 6px; border-radius:4px;">{m['formula']}</code>
   </div>
   <div style="color:#a0aec0; font-size:0.85rem;">
     📖 <strong>Descripción:</strong> {m['descripcion']}
@@ -558,7 +558,7 @@ def render():
                         barmode="stack",
                         category_orders={"periodo": orden_periodos},
                         labels={"periodo": "", "monto_clp": "CLP", "mercado": "Mercado"},
-                        color_discrete_map={"nacional": "#4e79a7", "internacional": "#f28e2b"},
+                        color_discrete_map={"nacional": "#7592CC", "internacional": "#f28e2b"},
                         custom_data=["monto_fmt"],
                     )
                     fig2.update_traces(
@@ -567,11 +567,11 @@ def render():
                     fig2.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)",
                         plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="#ccd6f6",
+                        font_color="#EDEEE8",
                         margin=dict(t=10, b=10, l=10, r=10),
                         height=320,
                         xaxis=dict(showgrid=False, tickangle=-45),
-                        yaxis=dict(gridcolor="#2d3250"),
+                        yaxis=dict(gridcolor="#2D332B"),
                         legend=dict(orientation="h", y=1.1),
                     )
                     st.plotly_chart(fig2, use_container_width=True)
@@ -689,7 +689,7 @@ def render():
                             category_orders={"periodo": orden_pnl},
                             custom_data=["pnl_fmt", group_col],
                             labels={"periodo": "", "pnl_clp": "P&L (CLP)", group_col: pnl_group},
-                            color_discrete_sequence=ASSET_COLORS,
+                            color_discrete_sequence=ASSET_COLORS_MATTE,
                         )
                         fig_pnl.update_traces(
                             hovertemplate=(
@@ -703,11 +703,11 @@ def render():
                         fig_pnl.update_layout(
                             paper_bgcolor="rgba(0,0,0,0)",
                             plot_bgcolor="rgba(0,0,0,0)",
-                            font_color="#ccd6f6",
+                            font_color="#EDEEE8",
                             margin=dict(t=10, b=10, l=10, r=10),
                             height=400,
                             xaxis=dict(showgrid=False, tickangle=-45),
-                            yaxis=dict(gridcolor="#2d3250"),
+                            yaxis=dict(gridcolor="#2D332B"),
                             legend=dict(orientation="h", y=-0.3, font=dict(size=10)),
                         )
                         st.plotly_chart(fig_pnl, use_container_width=True)
@@ -740,7 +740,7 @@ def render():
                 path=["tipo", "sector"],
                 values="valor_clp",
                 color="tipo",
-                color_discrete_sequence=ASSET_COLORS,
+                color_discrete_sequence=ASSET_COLORS_MATTE,
             )
             fig_sec.update_traces(
                 hovertemplate="<b>%{label}</b><br>%{value:,.0f} CLP<br>%{percentParent:.1%} del tipo<extra></extra>",
@@ -750,7 +750,7 @@ def render():
                 paper_bgcolor="rgba(0,0,0,0)",
                 margin=dict(t=10, b=10, l=10, r=10),
                 height=420,
-                font_color="#ccd6f6",
+                font_color="#EDEEE8",
             )
             st.plotly_chart(fig_sec, use_container_width=True)
 
@@ -940,14 +940,14 @@ def render():
             fig_cv = px.bar(
                 grp_cv, x="_mes", y="monto_plot", color="tipo",
                 barmode="relative",
-                color_discrete_map={"compra": "#4e79a7", "venta": "#e15759"},
+                color_discrete_map={"compra": "#7592CC", "venta": "#e15759"},
                 labels={"_mes": "", "monto_plot": "USD", "tipo": ""},
             )
             fig_cv.update_layout(
                 paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#ccd6f6", margin=dict(t=10,b=10,l=10,r=10), height=280,
+                font_color="#EDEEE8", margin=dict(t=10,b=10,l=10,r=10), height=280,
                 xaxis=dict(showgrid=False, tickangle=-45),
-                yaxis=dict(gridcolor="#2d3250", tickprefix="$"),
+                yaxis=dict(gridcolor="#2D332B", tickprefix="$"),
                 legend=dict(orientation="h", y=1.1),
             )
             st.plotly_chart(fig_cv, use_container_width=True)
@@ -1080,7 +1080,7 @@ def render():
                         size="valor_clp", size_max=60,
                         color="sector",
                         text="ticker",
-                        color_discrete_sequence=ASSET_COLORS,
+                        color_discrete_sequence=ASSET_COLORS_MATTE,
                         labels={"pe": "P/E Ratio", "eps": "EPS (moneda local)", "sector": "Sector"},
                         custom_data=["hover_txt"],
                     )
@@ -1089,19 +1089,19 @@ def render():
                         textposition="top center",
                         textfont=dict(size=9),
                     )
-                    fig_bub.add_vline(x=15, line_dash="dot", line_color="#2ecc71",
+                    fig_bub.add_vline(x=15, line_dash="dot", line_color="#73BE8F",
                                       annotation_text="P/E 15 (barato)", annotation_position="top right",
-                                      annotation_font_color="#2ecc71")
-                    fig_bub.add_vline(x=25, line_dash="dot", line_color="#e74c3c",
+                                      annotation_font_color="#73BE8F")
+                    fig_bub.add_vline(x=25, line_dash="dot", line_color="#C76666",
                                       annotation_text="P/E 25 (caro)", annotation_position="top right",
-                                      annotation_font_color="#e74c3c")
+                                      annotation_font_color="#C76666")
                     fig_bub.add_hline(y=0, line_color="#888", line_width=1)
                     fig_bub.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="#ccd6f6",
+                        font_color="#EDEEE8",
                         margin=dict(t=20, b=10, l=10, r=10), height=460,
-                        xaxis=dict(gridcolor="#2d3250", title="P/E Ratio  (← más barato)"),
-                        yaxis=dict(gridcolor="#2d3250", title="EPS  (más rentable →)"),
+                        xaxis=dict(gridcolor="#2D332B", title="P/E Ratio  (← más barato)"),
+                        yaxis=dict(gridcolor="#2D332B", title="EPS  (más rentable →)"),
                         legend=dict(orientation="v", x=1.01),
                     )
                     st.plotly_chart(fig_bub, use_container_width=True)
@@ -1116,7 +1116,7 @@ def render():
                 df_pe = df_m[df_m["pe"].notna()].sort_values("pe").copy()
                 if not df_pe.empty:
                     df_pe["color_pe"] = df_pe["pe"].apply(
-                        lambda x: "#2ecc71" if x < 15 else ("#f39c12" if x < 25 else "#e74c3c")
+                        lambda x: "#73BE8F" if x < 15 else ("#D2AB5D" if x < 25 else "#C76666")
                     )
                     def _hover_pe(r):
                         eps_str = f"{r['eps']:.2f}" if pd.notna(r['eps']) else "—"
@@ -1137,16 +1137,16 @@ def render():
                         customdata=df_pe[["hover_pe"]].values,
                         hovertemplate="%{customdata[0]}<extra></extra>",
                     ))
-                    fig_pe.add_vline(x=15, line_dash="dot", line_color="#2ecc71",
-                                     annotation_text="15x", annotation_font_color="#2ecc71")
-                    fig_pe.add_vline(x=25, line_dash="dot", line_color="#e74c3c",
-                                     annotation_text="25x", annotation_font_color="#e74c3c")
+                    fig_pe.add_vline(x=15, line_dash="dot", line_color="#73BE8F",
+                                     annotation_text="15x", annotation_font_color="#73BE8F")
+                    fig_pe.add_vline(x=25, line_dash="dot", line_color="#C76666",
+                                     annotation_text="25x", annotation_font_color="#C76666")
                     fig_pe.update_layout(
                         paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                        font_color="#ccd6f6",
+                        font_color="#EDEEE8",
                         margin=dict(t=20, b=10, l=10, r=60),
                         height=max(300, len(df_pe) * 28),
-                        xaxis=dict(gridcolor="#2d3250", title="P/E Ratio"),
+                        xaxis=dict(gridcolor="#2D332B", title="P/E Ratio"),
                         yaxis=dict(showgrid=False),
                         showlegend=False,
                     )

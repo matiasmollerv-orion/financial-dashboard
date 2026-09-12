@@ -154,7 +154,7 @@ def render():
         x=años_label, y=pat_opt,
         name=f"Optimista ({retorno_anual+3:.1f}%)",
         mode="lines",
-        line=dict(color="#2ecc71", width=1, dash="dot"),
+        line=dict(color="#73BE8F", width=1, dash="dot"),
         fill="tonexty",
         fillcolor="rgba(46,204,113,0.08)",
     ))
@@ -162,14 +162,14 @@ def render():
         x=años_label, y=pat_base,
         name=f"Base ({retorno_anual:.1f}%)",
         mode="lines+markers",
-        line=dict(color="#4e79a7", width=2),
+        line=dict(color="#7592CC", width=2),
         marker=dict(size=5),
     ))
     fig.add_trace(go.Scatter(
         x=años_label, y=pat_cons,
         name=f"Conservador ({max(0,retorno_anual-3):.1f}%)",
         mode="lines",
-        line=dict(color="#e74c3c", width=1, dash="dot"),
+        line=dict(color="#C76666", width=1, dash="dot"),
         fill="tonexty",
         fillcolor="rgba(231,76,60,0.08)",
     ))
@@ -182,7 +182,7 @@ def render():
             fig.add_hline(
                 y=meta,
                 line_dash="dash",
-                line_color="#f39c12",
+                line_color="#D2AB5D",
                 annotation_text=label,
                 annotation_position="right",
             )
@@ -190,7 +190,7 @@ def render():
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font_color="#ccd6f6",
+        font_color="#EDEEE8",
         margin=dict(t=20, b=20, l=10, r=80),
         height=400,
         xaxis=dict(
@@ -201,7 +201,7 @@ def render():
         ),
         yaxis=dict(
             title="Patrimonio (CLP)",
-            gridcolor="#2d3250",
+            gridcolor="#2D332B",
             tickformat=",.0f",
         ),
         legend=dict(orientation="h", y=1.12),
