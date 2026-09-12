@@ -104,12 +104,43 @@ COLORS = {
     "card": "#1e2130",
 }
 
-# Paleta para gráficos de activos
+# Paleta para gráficos de activos (flat-UI original, sigue en uso en el
+# resto del dashboard — no tocar para no romper vistas que ya la usan)
 ASSET_COLORS = [
     "#4e79a7", "#f28e2b", "#e15759", "#76b7b2", "#59a14f",
     "#edc948", "#b07aa1", "#ff9da7", "#9c755f", "#bab0ac",
     "#1f77b4", "#ff7f0e", "#2ca02c", "#d62728", "#9467bd",
     "#8c564b", "#e377c2", "#7f7f7f", "#bcbd22", "#17becf",
+]
+
+# Paleta "metálica mate" (prototipo 2026-09) — 2 colores reales sacados
+# pixel a pixel de la captura de referencia (verde, ámbar) + 14 derivados
+# con la misma fórmula HSL (L~59-63%, S~46%; zona fría 170-300° un poco
+# más clara para verse igual de "viva" que la cálida). ORDEN calculado
+# por máxima separación de matiz (greedy furthest-point desde las 2
+# anclas reales) — NO es orden estético, es orden de distinguibilidad:
+# los primeros son los más distintos entre sí, así que un gráfico con
+# pocas categorías (ej. "por tipo de activo", ~6) usa los mejores 6 solo
+# tomando slice[:6]. Nunca reordenar ni saltar posiciones — el color es
+# identidad, no ranking (ver skill dataviz/color-formula.md). Contraste
+# vs fondo #11140F verificado uno a uno, todos >=4.6:1.
+ASSET_COLORS_MATTE = [
+    "#73BE8F",  # 1. verde       (real)      8.39:1
+    "#D2AB5D",  # 2. ámbar       (real)      8.60:1
+    "#9875CC",  # 3. púrpura                 5.09:1
+    "#C76696",  # 4. rosa fuerte             5.10:1
+    "#75B2CC",  # 5. celeste                 7.96:1
+    "#9AC766",  # 6. lima                    9.49:1
+    "#C76666",  # 7. rojo                    4.88:1
+    "#BDC766",  # 8. oliva                  10.19:1
+    "#76C766",  # 9. verde intenso           8.96:1
+    "#75CCC6",  # 10. teal                   9.91:1
+    "#7592CC",  # 11. azul                   5.96:1
+    "#7875CC",  # 12. índigo                 4.61:1
+    "#B875CC",  # 13. violeta                5.71:1
+    "#C766BA",  # 14. magenta                5.34:1
+    "#C78A66",  # 15. canela                 6.42:1
+    "#C76673",  # 16. rojo rosado            4.93:1
 ]
 
 
@@ -154,8 +185,114 @@ def apply_global_styles():
             padding: 16px;
             margin-bottom: 12px;
         }
+
+        /* ── Stat cards (prototipo 2026-09) ──────────────────
+           Tarjeta HTML propia, mismo look que st.metric pero con
+           una 3ra línea de caption chica — cosa que st.metric no
+           permite (solo label + value + delta).
+           Paleta "metálica mate" sacada PIXEL A PIXEL de la captura
+           de referencia de Matías (image-1789218865202.png), no a ojo:
+             fondo      #11140F  (esquina + interior de tarjeta)
+             valor      #EDEEE8  (blanco cálido)
+             label      #70786B  (gris-sage apagado)
+             caption    #9DA698  (gris-sage más claro)
+             verde      #73BE8F  (real, +7.0% / +8.01%)
+             ámbar txt  #EACF90  (real, texto dentro del callout)
+             ámbar line #D2AB5D  (real, borde izquierdo del callout)
+           Azul y rojo NO estaban en la captura (solo mostraba verde/
+           ámbar) — derivados con la misma fórmula (HSL L~60%, S~50-55%)
+           para que la familia se vea consistente. Contraste vs fondo
+           verificado (todos >=5.6:1, boletín WCAG AA de sobra):
+             azul  #6E9BCF  (6.40:1)
+             rojo  #D37269  (5.64:1)
+           No pude correr el validador CVD del skill (necesita node, no
+           instalado acá) — mitigación: el signo +/- siempre va en el
+           texto también, el color nunca es el único canal. */
+        .stat-card {
+            background-color: #11140F;
+            border: 1px solid #262922;
+            border-radius: 10px;
+            padding: 14px 16px;
+            height: 100%;
+        }
+        .stat-label {
+            font-size: 0.72rem;
+            font-weight: 600;
+            letter-spacing: 0.04em;
+            text-transform: uppercase;
+            color: #70786B;
+            margin-bottom: 6px;
+        }
+        .stat-value {
+            font-size: 1.5rem;
+            font-weight: 700;
+            color: #EDEEE8;
+            font-variant-numeric: proportional-nums;
+            line-height: 1.2;
+        }
+        .stat-delta {
+            font-size: 0.85rem;
+            font-weight: 600;
+            margin-top: 2px;
+        }
+        .stat-delta.pos { color: #73BE8F; }
+        .stat-delta.neg { color: #D37269; }
+        .stat-delta.info { color: #6E9BCF; }
+        .stat-delta.warn { color: #EACF90; }
+        .stat-caption {
+            font-size: 0.75rem;
+            color: #9DA698;
+            margin-top: 4px;
+        }
+
+        /* Callout — mismo fondo/borde reales de la captura. */
+        .callout-box {
+            background-color: #332B19;
+            border-left: 3px solid #D2AB5D;
+            border-radius: 6px;
+            padding: 14px 18px;
+            margin: 16px 0;
+            font-size: 0.88rem;
+            color: #EDEEE8;
+            line-height: 1.5;
+        }
+        .callout-box b { color: #EACF90; }
+        .callout-box .pos { color: #73BE8F; font-weight: 700; }
     </style>
     """, unsafe_allow_html=True)
+
+
+def styled_metric(label: str, value, caption: str = None,
+                  delta: str = None, delta_positive: bool = None):
+    """
+    Tarjeta de métrica en HTML propio (no st.metric) — mismo patrón visual
+    pero con una línea de caption chica debajo, y sin la flecha ▲/▼ nativa
+    de Streamlit (delta se pinta a mano con .pos/.neg).
+    Respeta hide_amounts igual que metric_safe().
+    """
+    display_value = "••••••" if amounts_hidden() else value
+    display_delta = None if amounts_hidden() else delta
+    display_caption = None if amounts_hidden() else caption
+
+    delta_html = ""
+    if display_delta:
+        cls = "pos" if delta_positive else ("neg" if delta_positive is False else "")
+        delta_html = f'<div class="stat-delta {cls}">{display_delta}</div>'
+    caption_html = f'<div class="stat-caption">{display_caption}</div>' if display_caption else ""
+
+    st.markdown(f"""
+    <div class="stat-card">
+        <div class="stat-label">{label}</div>
+        <div class="stat-value">{display_value}</div>
+        {delta_html}
+        {caption_html}
+    </div>
+    """, unsafe_allow_html=True)
+
+
+def callout(html_text: str):
+    """Caja de nota destacada (borde ámbar). html_text acepta <b> para énfasis."""
+    st.markdown(f'<div class="callout-box">{html_text}</div>', unsafe_allow_html=True)
 
 
 def section_title(text):

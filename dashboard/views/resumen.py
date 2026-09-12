@@ -11,7 +11,7 @@ import streamlit as st
 from dashboard.utils import (
     fmt_clp, fmt_usd, fmt_pct,
     fmt_clp_safe, fmt_usd_safe, metric_safe, amounts_hidden,
-    section_title, ASSET_COLORS,
+    section_title, ASSET_COLORS, ASSET_COLORS_MATTE, styled_metric,
     load_cartera, load_buda, load_ingresos, get_usd_clp,
 )
 from dashboard.mappings import get_tipo, get_pais
@@ -83,13 +83,14 @@ def render():
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        metric_safe("💼 Patrimonio (filtrado)", fmt_clp(total_clp))
+        styled_metric("Patrimonio (filtrado)", fmt_clp(total_clp))
     with c2:
-        metric_safe("📥 Costo total invertido", fmt_clp(costo_clp))
+        styled_metric("Costo total invertido", fmt_clp(costo_clp))
     with c3:
-        metric_safe("📈 Ganancia / Pérdida", fmt_clp(ganancia), delta=fmt_pct(retorno))
+        styled_metric("Ganancia / Pérdida", fmt_clp(ganancia),
+                      delta=fmt_pct(retorno), delta_positive=(ganancia >= 0))
     with c4:
-        st.metric("🗂 Posiciones", str(n_pos))
+        styled_metric("Posiciones", str(n_pos))
 
     st.divider()
 
@@ -105,7 +106,7 @@ def render():
             hole=0.52,
             textinfo="label+percent",
             textfont_size=12,
-            marker=dict(colors=ASSET_COLORS),
+            marker=dict(colors=ASSET_COLORS_MATTE),
         ))
         fig.update_layout(
             showlegend=False,
@@ -114,7 +115,7 @@ def render():
             height=300,
             annotations=[dict(
                 text=f"<b>{fmt_clp_safe(total_clp)}</b>",
-                x=0.5, y=0.5, font_size=13, showarrow=False, font_color="#ccd6f6"
+                x=0.5, y=0.5, font_size=13, showarrow=False, font_color="#EDEEE8"
             )],
         )
         st.plotly_chart(fig, use_container_width=True)
@@ -128,7 +129,7 @@ def render():
             hole=0.52,
             textinfo="label+percent",
             textfont_size=12,
-            marker=dict(colors=ASSET_COLORS[5:]),
+            marker=dict(colors=ASSET_COLORS_MATTE[5:] + ASSET_COLORS_MATTE[:5]),
         ))
         fig2.update_layout(
             showlegend=False,
@@ -147,16 +148,16 @@ def render():
             grp_tipo,
             x="valor_clp", y="tipo",
             orientation="h",
-            color_discrete_sequence=["#4e79a7"],
+            color_discrete_sequence=[ASSET_COLORS_MATTE[10]],  # azul de la familia matte
             labels={"valor_clp": "CLP", "tipo": ""},
         )
         fig3.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#ccd6f6",
+            font_color="#EDEEE8",
             margin=dict(t=5, b=5, l=5, r=5),
             height=250,
-            xaxis=dict(tickformat=",.0f", gridcolor="#2d3250"),
+            xaxis=dict(tickformat=",.0f", gridcolor="#262922"),
             yaxis=dict(showgrid=False, autorange="reversed"),
         )
         st.plotly_chart(fig3, use_container_width=True)
@@ -169,17 +170,20 @@ def render():
             x="valor_clp", y="ticker",
             orientation="h",
             color="retorno_pct",
-            color_continuous_scale=["#e74c3c", "#f39c12", "#2ecc71"],
+            # Diverging real: rojo <- gris neutro (0%) -> verde, no rojo->ambar->verde
+            # (un matiz en el punto medio de una escala divergente confunde la
+            # polaridad — ver skill dataviz/color-formula.md).
+            color_continuous_scale=["#C76666", "#4A4D45", "#73BE8F"],
             color_continuous_midpoint=0,
             labels={"valor_clp": "CLP", "ticker": "", "retorno_pct": "Retorno %"},
         )
         fig4.update_layout(
             paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font_color="#ccd6f6",
+            font_color="#EDEEE8",
             margin=dict(t=5, b=5, l=5, r=5),
             height=250,
-            xaxis=dict(tickformat=",.0f", gridcolor="#2d3250"),
+            xaxis=dict(tickformat=",.0f", gridcolor="#262922"),
             yaxis=dict(showgrid=False),
         )
         st.plotly_chart(fig4, use_container_width=True)
@@ -210,6 +214,7 @@ def render():
         total_ing = pd.to_numeric(df_ingresos["monto"], errors="coerce").sum()
         avg       = total_ing / len(df_ingresos)
         c1, c2, c3 = st.columns(3)
-        with c1: metric_safe("Total 12 meses", fmt_clp(total_ing))
-        with c2: metric_safe("Promedio mensual", fmt_clp(avg))
-        with c3: st.metric("Tasa inversión / ingreso", fmt_pct(costo_clp / total_ing * 100) if total_ing else "-")
+        with c1: styled_metric("Total 12 meses", fmt_clp(total_ing))
+        with c2: styled_metric("Promedio mensual", fmt_clp(avg))
+        with c3: styled_metric("Tasa inversión / ingreso",
+                               fmt_pct(costo_clp / total_ing * 100) if total_ing else "-")
