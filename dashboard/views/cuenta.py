@@ -63,7 +63,9 @@ def render():
 
     c1, c2, c3, c4 = st.columns(4)
     with c1:
-        año_sel = st.selectbox("Año", ["Todos"] + [str(a) for a in años])
+        año_opts = ["Todos"] + [str(a) for a in años]
+        año_idx = año_opts.index("2026") if "2026" in año_opts else 0
+        año_sel = st.selectbox("Año", año_opts, index=año_idx)
     with c2:
         meses_disp = ["Todos"] + sorted(df["mes"].unique(), reverse=True)
         mes_sel = st.selectbox("Mes", meses_disp)

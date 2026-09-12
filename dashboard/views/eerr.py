@@ -54,7 +54,9 @@ def render():
     col_f1, col_f2 = st.columns(2)
     with col_f1:
         años_disp = sorted(set(m[:4] for m in todos), reverse=True)
-        año_sel   = st.selectbox("Año", ["Todos"] + años_disp)
+        año_opts  = ["Todos"] + años_disp
+        año_idx   = año_opts.index("2026") if "2026" in año_opts else 0
+        año_sel   = st.selectbox("Año", año_opts, index=año_idx)
     with col_f2:
         n_meses = st.slider("Últimos N meses", 1, len(todos), min(12, len(todos)))
 

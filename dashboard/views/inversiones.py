@@ -505,9 +505,11 @@ def render():
                         period_options_inv.append(f"{meses_es_inv[m]} {y}")
 
                 with col_inv2:
+                    _pidx = period_options_inv.index("2026") if "2026" in period_options_inv else 0
                     periodo_filter = st.selectbox(
                         "Acotar a período",
                         period_options_inv,
+                        index=_pidx,
                         key="con_periodo_filter"
                     )
 
@@ -932,25 +934,37 @@ def render():
 
             # Gráfico compras vs ventas por mes
             section_title("Flujo mensual: compras vs ventas")
-            df_r["_mes"] = pd.to_datetime(df_r["fecha"]).dt.to_period("M").astype(str)
-            grp_cv = df_r.groupby(["_mes","tipo"])["monto_usd_ef"].sum().reset_index()
-            grp_cv["monto_plot"] = grp_cv.apply(
-                lambda r: r["monto_usd_ef"] if r["tipo"]=="compra" else -r["monto_usd_ef"], axis=1
-            )
-            fig_cv = px.bar(
-                grp_cv, x="_mes", y="monto_plot", color="tipo",
-                barmode="relative",
-                color_discrete_map={"compra": "#7592CC", "venta": "#C76666"},
-                labels={"_mes": "", "monto_plot": "USD", "tipo": ""},
-            )
-            fig_cv.update_layout(
-                paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
-                font_color="#EDEEE8", margin=dict(t=10,b=10,l=10,r=10), height=280,
-                xaxis=dict(showgrid=False, tickangle=-45),
-                yaxis=dict(gridcolor="#2D332B", tickprefix="$"),
-                legend=dict(orientation="h", y=1.1),
-            )
-            st.plotly_chart(fig_cv, use_container_width=True)
+            años_hist = sorted(pd.to_datetime(df_r["fecha"]).dt.year.unique(), reverse=True)
+            año_hist_opts = ["Todos"] + [str(a) for a in años_hist]
+            año_hist_idx = año_hist_opts.index("2026") if "2026" in año_hist_opts else 0
+            año_hist_sel = st.selectbox("Año", año_hist_opts, index=año_hist_idx, key="hist_cv_año")
+
+            df_r_cv = df_r.copy()
+            if año_hist_sel != "Todos":
+                df_r_cv = df_r_cv[pd.to_datetime(df_r_cv["fecha"]).dt.year == int(año_hist_sel)]
+
+            if df_r_cv.empty:
+                st.info("Sin transacciones para el año seleccionado.")
+            else:
+                df_r_cv["_mes"] = pd.to_datetime(df_r_cv["fecha"]).dt.to_period("M").astype(str)
+                grp_cv = df_r_cv.groupby(["_mes","tipo"])["monto_usd_ef"].sum().reset_index()
+                grp_cv["monto_plot"] = grp_cv.apply(
+                    lambda r: r["monto_usd_ef"] if r["tipo"]=="compra" else -r["monto_usd_ef"], axis=1
+                )
+                fig_cv = px.bar(
+                    grp_cv, x="_mes", y="monto_plot", color="tipo",
+                    barmode="relative",
+                    color_discrete_map={"compra": "#7592CC", "venta": "#C76666"},
+                    labels={"_mes": "", "monto_plot": "USD", "tipo": ""},
+                )
+                fig_cv.update_layout(
+                    paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
+                    font_color="#EDEEE8", margin=dict(t=10,b=10,l=10,r=10), height=280,
+                    xaxis=dict(showgrid=False, tickangle=-45),
+                    yaxis=dict(gridcolor="#2D332B", tickprefix="$"),
+                    legend=dict(orientation="h", y=1.1),
+                )
+                st.plotly_chart(fig_cv, use_container_width=True)
 
             # Filtros
             col_f1, col_f2, col_f3 = st.columns(3)

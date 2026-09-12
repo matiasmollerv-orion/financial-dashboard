@@ -79,7 +79,9 @@ def render():
     col_f1, col_f2, col_f3, col_f4 = st.columns(4)
     with col_f1:
         años = sorted(df_gastos["fecha"].dt.year.unique(), reverse=True)
-        año_sel = st.selectbox("Año", ["Todos"] + [str(a) for a in años])
+        año_opts = ["Todos"] + [str(a) for a in años]
+        año_idx = año_opts.index("2026") if "2026" in año_opts else 0
+        año_sel = st.selectbox("Año", año_opts, index=año_idx)
     with col_f2:
         meses_map = {1:"Ene",2:"Feb",3:"Mar",4:"Abr",5:"May",6:"Jun",
                      7:"Jul",8:"Ago",9:"Sep",10:"Oct",11:"Nov",12:"Dic"}
